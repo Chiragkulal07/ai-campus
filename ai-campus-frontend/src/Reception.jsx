@@ -2,16 +2,16 @@ import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 
 const BUILDING_META = {
-  CODING_LAB:     { icon: '💻', accent: '#188c88' },
-  INTERVIEW_HALL: { icon: '🎤', accent: '#5c4535' },
-  LIBRARY:        { icon: '📚', accent: '#b08154' },
-  EVENT_HALL:     { icon: '🎉', accent: '#de9b2a' },
+  CODING_LAB:     { icon: '💻', accent: '#6366f1' },
+  INTERVIEW_HALL: { icon: '🎤', accent: '#f59e0b' },
+  LIBRARY:        { icon: '📚', accent: '#10b981' },
+  EVENT_HALL:     { icon: '🎉', accent: '#ec4899' },
 };
 
 const DIFF_PILL = {
-  EASY:   { bg: 'rgba(16,185,129,0.15)', color: '#34d399', label: 'Easy' },
-  MEDIUM: { bg: 'rgba(245,158,11,0.15)', color: '#fbbf24', label: 'Medium' },
-  HARD:   { bg: 'rgba(239,68,68,0.15)',  color: '#f87171', label: 'Hard' },
+  EASY:   { bg: 'rgba(16,185,129,0.12)', color: '#34d399', border: 'rgba(16,185,129,0.2)', label: 'Easy' },
+  MEDIUM: { bg: 'rgba(245,158,11,0.12)', color: '#fbbf24', border: 'rgba(245,158,11,0.2)', label: 'Medium' },
+  HARD:   { bg: 'rgba(239,68,68,0.12)',  color: '#f87171', border: 'rgba(239,68,68,0.2)', label: 'Hard' },
 };
 
 function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
@@ -20,11 +20,8 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
   const [error, setError] = useState('');
   const [joiningId, setJoiningId] = useState(null);
 
-  // Local copy of the correct-answers total, seeded from `me` and updated
-  // live when a challenge finishes — without this, the number would only
-  // ever reflect whatever it was when the page first loaded.
   const [totalCorrectAnswers, setTotalCorrectAnswers] = useState(me.profile.totalCorrectAnswers || 0);
-  const [justGained, setJustGained] = useState(null); // e.g. "+3" flash after a challenge
+  const [justGained, setJustGained] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -39,9 +36,6 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
     const socket = io('http://localhost:4001');
 
     socket.on('connect', () => {
-      // Subscribe to this user's own profile-stat updates so this screen's
-      // correct-answers count stays live even for challenges finishing
-      // while the user is back here browsing, not in the challenge room.
       socket.emit('user:register', { token });
     });
 
@@ -77,52 +71,59 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
   };
 
   return (
-    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '40px 24px', fontFamily: "'Inter', sans-serif" }}>
+    <div style={{ maxWidth: '960px', margin: '0 auto', padding: '40px 24px', fontFamily: "'Inter', sans-serif" }}>
 
       {/* Hero card */}
       <div style={{
-        background: 'linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(139,92,246,0.1) 100%)',
-        border: '1px solid rgba(99,102,241,0.25)',
-        borderRadius: '20px', padding: '28px 32px', marginBottom: '36px',
-        display: 'flex', alignItems: 'center', gap: '20px',
+        background: 'linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(139,92,246,0.05) 100%)',
+        border: '1px solid rgba(99,102,241,0.2)',
+        borderRadius: '24px',
+        padding: '32px',
+        marginBottom: '40px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '24px',
+        boxShadow: '0 20px 40px rgba(0,0,0,0.4), inset 0 0 20px rgba(99,102,241,0.05)'
       }}>
         <div style={{
-          width: '56px', height: '56px', borderRadius: '50%', flexShrink: 0,
+          width: '64px', height: '64px', borderRadius: '50%', flexShrink: 0,
           background: me.avatar.bodyColor || '#6366f1',
-          border: '3px solid rgba(255,255,255,0.2)',
+          border: '2px solid rgba(99,102,241,0.4)',
+          boxShadow: `0 0 20px ${me.avatar.bodyColor || '#6366f1'}44`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '22px', fontWeight: 800, color: 'white',
+          fontSize: '24px', fontWeight: 800, color: 'white',
         }}>
           {me.displayName[0].toUpperCase()}
         </div>
         <div style={{ flex: 1 }}>
-          <h2 style={{ color: '#f1f5f9', fontSize: '20px', fontWeight: 800, marginBottom: '2px' }}>
+          <h2 style={{ color: '#f8fafc', fontSize: '22px', fontWeight: 800, marginBottom: '4px', letterSpacing: '-0.5px' }}>
             Welcome back, {me.displayName} 👋
           </h2>
-          <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '12px' }}>
-            {me.profile.challengesWon || 0} wins · {me.profile.challengesJoined || 0} challenges joined
+          <p style={{ color: '#94a3b8', fontSize: '13.5px', marginBottom: '16px', fontWeight: 500 }}>
+            🏆 {me.profile.challengesWon || 0} Wins &nbsp;·&nbsp; 🎮 {me.profile.challengesJoined || 0} Matches Joined
           </p>
 
-          {/* Correct-answers stat, replacing the old level/XP bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{
-              display: 'flex', alignItems: 'center', gap: '7px',
-              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '10px', padding: '6px 14px',
+              display: 'flex', alignItems: 'center', gap: '8px',
+              background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: '12px', padding: '8px 16px',
+              boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.02)'
             }}>
               <span style={{ fontSize: '16px' }}>🎯</span>
-              <span style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '14px' }}>
+              <span style={{ color: '#fff', fontWeight: 700, fontSize: '15px' }}>
                 {totalCorrectAnswers}
               </span>
-              <span style={{ color: '#64748b', fontSize: '12px' }}>correct answers</span>
+              <span style={{ color: '#64748b', fontSize: '12px', fontWeight: 500 }}>Correct Answers</span>
             </div>
 
             {justGained !== null && (
               <span style={{
-                color: '#34d399', fontSize: '13px', fontWeight: 700,
+                color: '#34d399', fontSize: '13.5px', fontWeight: 700,
                 animation: 'floatUpFade 4s ease-out forwards',
+                display: 'flex', alignItems: 'center', gap: '4px'
               }}>
-                +{justGained} just now
+                ✨ +{justGained} Stats
               </span>
             )}
           </div>
@@ -130,33 +131,50 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
       </div>
 
       {/* Buildings */}
-      <h3 style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '14px' }}>
-        Buildings
+      <h3 style={{ color: '#64748b', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '16px' }}>
+        Campus Sectors
       </h3>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '40px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '48px' }}>
         {Object.entries(BUILDING_META).map(([id, meta]) => (
           <div
             key={id}
             onClick={() => onEnterBuilding(id, id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}
             style={{
-              background: 'rgba(15,23,42,0.8)', border: '1px solid rgba(255,255,255,0.07)',
-              borderRadius: '16px', padding: '18px 20px',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '14px',
+              background: 'rgba(15,23,42,0.45)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: '20px',
+              padding: '24px',
+              cursor: 'pointer',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
               transition: 'all 0.2s',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
             }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = meta.accent + '55'; e.currentTarget.style.background = 'rgba(15,23,42,1)'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.background = 'rgba(15,23,42,0.8)'; }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = meta.accent;
+              e.currentTarget.style.boxShadow = `0 12px 30px ${meta.accent}1f`;
+              e.currentTarget.style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)';
+              e.currentTarget.style.boxShadow = '0 4px 20px rgba(0,0,0,0.15)';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
           >
             <div style={{
-              width: '40px', height: '40px', borderRadius: '12px', flexShrink: 0,
-              background: meta.accent + '22', border: `1px solid ${meta.accent}44`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px',
+              width: '48px', height: '48px', borderRadius: '14px',
+              background: meta.accent + '15',
+              border: `1.5px solid ${meta.accent}33`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px',
+              boxShadow: `0 0 15px ${meta.accent}12`
             }}>{meta.icon}</div>
-            <div>
-              <div style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '14px' }}>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '15px', letterSpacing: '-0.3px' }}>
                 {id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
               </div>
-              <div style={{ color: meta.accent, fontSize: '12px', fontWeight: 500, marginTop: '2px' }}>
+              <div style={{ color: meta.accent, fontSize: '13px', fontWeight: 700 }}>
                 Enter →
               </div>
             </div>
@@ -165,61 +183,77 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
       </div>
 
       {/* Live activity */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
         <div>
-          <h3 style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>
+          <h3 style={{ color: '#64748b', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '4px' }}>
             Live Activity Board
           </h3>
-          <p style={{ color: '#475569', fontSize: '12px' }}>Every open challenge across campus</p>
+          <p style={{ color: '#475569', fontSize: '13px' }}>Browse and join live challenges currently active on campus</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#10b981', animation: 'pulse 2s infinite' }} />
-          <span style={{ color: '#10b981', fontSize: '11px', fontWeight: 600 }}>LIVE</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', padding: '6px 12px', borderRadius: '20px' }}>
+          <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', animation: 'pulse 1.5s infinite', boxShadow: '0 0 8px #10b981' }} />
+          <span style={{ color: '#10b981', fontSize: '11px', fontWeight: 700, letterSpacing: '0.5px' }}>LIVE DECK</span>
         </div>
       </div>
 
       {error && (
         <div style={{
-          background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
-          color: '#fca5a5', borderRadius: '10px', padding: '10px 14px', fontSize: '13px', marginBottom: '16px',
+          background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
+          color: '#fca5a5', borderRadius: '12px', padding: '12px 16px', fontSize: '13.5px', marginBottom: '20px'
         }}>⚠️ {error}</div>
       )}
 
-      {loading && <p style={{ color: '#475569', fontSize: '14px' }}>Loading...</p>}
-
-      {!loading && challenges.length === 0 && (
-        <div style={{
-          textAlign: 'center', padding: '48px 20px',
-          background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.07)',
-          borderRadius: '16px',
-        }}>
-          <div style={{ fontSize: '36px', marginBottom: '12px' }}>🏕️</div>
-          <p style={{ color: '#475569', fontSize: '14px' }}>No open challenges yet. Enter a building to start one!</p>
+      {loading && (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0', color: '#64748b', fontSize: '14px', gap: '8px', alignItems: 'center' }}>
+          <div style={{ width: '18px', height: '18px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'pulse 1s infinite' }} />
+          Loading lobby events...
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {!loading && challenges.length === 0 && (
+        <div style={{
+          textAlign: 'center', padding: '64px 24px',
+          background: 'rgba(15,23,42,0.2)', border: '1.5px dashed rgba(255,255,255,0.05)',
+          borderRadius: '24px',
+        }}>
+          <div style={{ fontSize: '40px', marginBottom: '16px' }}>🏕️</div>
+          <h4 style={{ color: '#94a3b8', fontSize: '16px', fontWeight: 700, marginBottom: '6px' }}>Campus is quiet right now</h4>
+          <p style={{ color: '#475569', fontSize: '13.5px' }}>No active challenges are currently open. Enter a building to launch one!</p>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {challenges.map(c => {
           const meta = BUILDING_META[c.building] || { icon: '🏛️', accent: '#6366f1' };
           const diff = DIFF_PILL[c.difficulty] || DIFF_PILL.EASY;
           const isFull = (c.currentParticipants ?? 0) >= c.maxParticipants;
           return (
             <div key={c.id} style={{
-              background: 'rgba(15,23,42,0.7)', border: '1px solid rgba(255,255,255,0.07)',
-              borderRadius: '14px', padding: '14px 18px',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                <span style={{ fontSize: '20px' }}>{meta.icon}</span>
+              background: 'rgba(15,23,42,0.45)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: '16px',
+              padding: '16px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '20px',
+              boxShadow: '0 4px 15px rgba(0,0,0,0.15)',
+              transition: 'border-color 0.2s'
+            }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: 0 }}>
+                <span style={{ fontSize: '24px', background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>{meta.icon}</span>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '3px' }}>
-                    <span style={{ fontWeight: 700, color: '#f1f5f9', fontSize: '14px' }}>{c.name}</span>
-                    <span style={{ fontSize: '11px', padding: '1px 7px', borderRadius: '5px', background: diff.bg, color: diff.color, fontWeight: 600 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span style={{ fontWeight: 700, color: '#f8fafc', fontSize: '15px', letterSpacing: '-0.3px' }}>{c.name}</span>
+                    <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '6px', background: diff.bg, color: diff.color, border: `1px solid ${diff.border}`, fontWeight: 700 }}>
                       {diff.label}
                     </span>
                   </div>
-                  <span style={{ fontSize: '12px', color: '#475569' }}>
-                    {c.category.replace(/_/g, ' ')} · {c.questionCount}q · {c.currentParticipants ?? 0}/{c.maxParticipants} joined · by {c.creatorName}
+                  <span style={{ fontSize: '12.5px', color: '#64748b', fontWeight: 500 }}>
+                    {c.category.replace(/_/g, ' ')} &nbsp;·&nbsp; 📋 {c.questionCount} Questions &nbsp;·&nbsp; 👥 {c.currentParticipants ?? 0}/{c.maxParticipants} Joined &nbsp;·&nbsp; by <strong style={{ color: '#94a3b8' }}>{c.creatorName}</strong>
                   </span>
                 </div>
               </div>
@@ -227,14 +261,17 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
                 onClick={() => handleJoin(c.id)}
                 disabled={isFull || joiningId === c.id}
                 style={{
-                  padding: '8px 18px', borderRadius: '10px', border: 'none', flexShrink: 0,
-                  background: isFull ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg, #10b981, #059669)',
+                  padding: '10px 20px', borderRadius: '12px', border: 'none', flexShrink: 0,
+                  background: isFull ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
                   color: isFull ? '#475569' : 'white', fontWeight: 700, fontSize: '13px',
                   cursor: isFull ? 'not-allowed' : 'pointer',
-                  boxShadow: isFull ? 'none' : '0 4px 12px rgba(16,185,129,0.3)',
+                  boxShadow: isFull ? 'none' : '0 4px 15px rgba(16,185,129,0.3)',
+                  transition: 'all 0.15s'
                 }}
+                onMouseEnter={e => { if(!isFull && joiningId !== c.id) e.currentTarget.style.transform = 'scale(1.02)'; }}
+                onMouseLeave={e => { if(!isFull && joiningId !== c.id) e.currentTarget.style.transform = 'scale(1)'; }}
               >
-                {joiningId === c.id ? '...' : isFull ? 'Full' : '▶ Join'}
+                {joiningId === c.id ? '...' : isFull ? 'Full' : 'Join Match'}
               </button>
             </div>
           );

@@ -20,17 +20,22 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
   const offsetY = viewport.h / 2 - myPlayer.y;
 
   const btnBase = {
-    width: '48px', height: '48px', fontSize: '18px',
+    width: '44px',
+    height: '44px',
+    fontSize: '16px',
     cursor: 'pointer',
-    background: 'rgba(8,12,20,0.75)',
-    border: '1px solid rgba(255,255,255,0.15)',
-    borderRadius: '12px',
-    color: 'white',
-    backdropFilter: 'blur(10px)',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    transition: 'all 0.1s',
+    background: 'rgba(15, 23, 42, 0.65)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: '10px',
+    color: '#94a3b8',
+    backdropFilter: 'blur(12px)',
+    boxShadow: '0 4px 15px rgba(0,0,0,0.3)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.15s',
     userSelect: 'none',
+    outline: 'none'
   };
 
   const makeBtn = (key, label) => ({
@@ -52,13 +57,14 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
       height: '100vh',
       overflow: 'hidden',
       zIndex: 0,
-      backgroundColor: '#7ec850',
+      // Premium futuristic deck background
+      backgroundColor: '#0b121f',
       backgroundImage: `
-        linear-gradient(45deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.15) 75%, rgba(255,255,255,0.15)),
-        linear-gradient(45deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.15) 75%, rgba(255,255,255,0.15))
+        radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 80%),
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)
       `,
-      backgroundSize: '40px 40px',
-      backgroundPosition: '0 0, 20px 20px',
+      backgroundSize: '100% 100%, 50px 50px, 50px 50px',
     }}>
 
       {/* World Container */}
@@ -116,14 +122,30 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
       {/* Movement HUD */}
       <div style={{ position: 'fixed', bottom: '32px', right: '32px', zIndex: 100 }}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
-          <button {...makeBtn('up', '↑')} />
+          <button
+            {...makeBtn('up', '↑')}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#94a3b8'; }}
+          />
         </div>
         <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-          <button {...makeBtn('left', '←')} />
-          <button {...makeBtn('down', '↓')} />
-          <button {...makeBtn('right', '→')} />
+          <button
+            {...makeBtn('left', '←')}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#94a3b8'; }}
+          />
+          <button
+            {...makeBtn('down', '↓')}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#94a3b8'; }}
+          />
+          <button
+            {...makeBtn('right', '→')}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#94a3b8'; }}
+          />
         </div>
-        <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.35)', fontSize: '10px', marginTop: '6px', fontFamily: "'Inter',sans-serif" }}>
+        <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '10px', marginTop: '6px', fontFamily: "'Inter',sans-serif" }}>
           Arrow keys or buttons
         </p>
       </div>
@@ -133,7 +155,7 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
 
 function Building({ id, x, y, name, color, playerX, playerY, onEnter }) {
   const distance = Math.hypot(x - playerX, y - playerY);
-  const isNear = distance < 150;
+  const isNear = distance < 160;
 
   return (
     <div style={{
@@ -141,81 +163,100 @@ function Building({ id, x, y, name, color, playerX, playerY, onEnter }) {
       left: x,
       top: y,
       transform: 'translate(-50%, -50%)',
-      width: '240px',
-      height: '180px',
+      width: '280px',
+      height: '200px',
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
+      justifyContent: 'flex-end',
       zIndex: 10
     }}>
       {/* Floating Prompt */}
       <AnimatePresence>
         {isNear && (
           <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.8 }}
-            animate={{ opacity: 1, y: -20, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.8 }}
+            initial={{ opacity: 0, y: 15, scale: 0.85 }}
+            animate={{ opacity: 1, y: -25, scale: 1 }}
+            exit={{ opacity: 0, y: 15, scale: 0.85 }}
             style={{
               position: 'absolute',
-              top: '-40px',
-              zIndex: 20
+              top: '-45px',
+              zIndex: 30
             }}
           >
             <button
               onClick={() => onEnter(id, name)}
               style={{
                 padding: '10px 20px',
-                fontSize: '16px',
-                fontWeight: 'bold',
+                fontSize: '14px',
+                fontWeight: 700,
+                letterSpacing: '0.5px',
                 backgroundColor: '#ffffff',
-                color: '#333',
-                border: '3px solid #333',
+                color: '#1e1b4b',
+                border: 'none',
                 borderRadius: '12px',
                 cursor: 'pointer',
-                boxShadow: '0 6px 12px rgba(0,0,0,0.3)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.5), 0 0 15px rgba(255,255,255,0.35)',
                 whiteSpace: 'nowrap',
-                pointerEvents: 'auto'
+                pointerEvents: 'auto',
+                transition: 'all 0.15s'
               }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
             >
-              Enter {name}
+              🔌 Connect to {name}
             </button>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Roof */}
+      {/* Cyber Hub Structure */}
       <div style={{
-        width: '0',
-        height: '0',
-        borderLeft: '130px solid transparent',
-        borderRight: '130px solid transparent',
-        borderBottom: `70px solid ${color}`,
-        filter: 'brightness(0.85)',
-        marginBottom: '-2px'
-      }} />
-      {/* Main Building */}
-      <div style={{
-        width: '260px',
-        height: '110px',
-        backgroundColor: color,
-        borderRadius: '0 0 16px 16px',
+        position: 'relative',
+        width: '210px',
+        height: '120px',
+        background: 'rgba(15, 23, 42, 0.65)',
+        backdropFilter: 'blur(12px)',
+        border: `2px solid ${color}`,
+        borderRadius: '24px 24px 16px 16px',
+        boxShadow: `0 15px 40px rgba(0,0,0,0.6), 0 0 25px ${color}33, inset 0 0 20px ${color}1a`,
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        boxShadow: '0 20px 30px rgba(0,0,0,0.3)',
-        border: '6px solid rgba(0,0,0,0.15)',
-        borderTop: 'none'
+        gap: '10px',
+        padding: '16px'
       }}>
+        {/* Floating Holo-ring at the top */}
         <div style={{
-          backgroundColor: 'rgba(255, 255, 255, 0.95)',
-          padding: '10px 20px',
-          borderRadius: '8px',
-          fontWeight: 'bold',
-          fontSize: '18px',
-          color: '#222',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.2)',
+          position: 'absolute',
+          top: '-10px',
+          width: '120px',
+          height: '6px',
+          background: color,
+          borderRadius: '50%',
+          boxShadow: `0 0 15px ${color}, 0 0 5px ${color}`,
+          opacity: 0.8
+        }} />
+
+        <div style={{
+          fontSize: '11px',
+          fontWeight: 700,
           textTransform: 'uppercase',
-          letterSpacing: '1px'
+          letterSpacing: '2px',
+          color: color,
+          textShadow: `0 0 8px ${color}88`
+        }}>
+          Terminal Hub
+        </div>
+
+        <div style={{
+          color: '#f1f5f9',
+          fontWeight: 800,
+          fontSize: '18px',
+          letterSpacing: '-0.5px',
+          textAlign: 'center',
+          textShadow: '0 2px 4px rgba(0,0,0,0.5)'
         }}>
           {name}
         </div>
@@ -224,11 +265,9 @@ function Building({ id, x, y, name, color, playerX, playerY, onEnter }) {
   );
 }
 
-export default CampusWorld;
-
 function Receptionist({ x, y, playerX, playerY }) {
   const distance = Math.hypot(x - playerX, y - playerY);
-  const isNear = distance < 150;
+  const isNear = distance < 160;
 
   const [dismissed, setDismissed] = useState(false);
 
@@ -249,26 +288,29 @@ function Receptionist({ x, y, playerX, playerY }) {
       zIndex: y,
       display: 'flex',
       flexDirection: 'column',
-      alignItems: 'center'
+      alignItems: 'center',
+      pointerEvents: 'none'
     }}>
+      {/* Premium Glass Talk Bubble */}
       <AnimatePresence>
         {showBubble && (
           <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.8 }}
-            animate={{ opacity: 1, y: -20, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.8 }}
+            initial={{ opacity: 0, y: 15, scale: 0.85 }}
+            animate={{ opacity: 1, y: -25, scale: 1 }}
+            exit={{ opacity: 0, y: 15, scale: 0.85 }}
             style={{
               position: 'absolute',
-              bottom: '60px',
-              width: '280px',
-              backgroundColor: '#ffffff',
-              padding: '16px',
-              borderRadius: '12px',
-              boxShadow: '0 8px 16px rgba(0,0,0,0.2)',
-              border: '2px solid #ddd',
-              color: '#333',
-              fontSize: '14px',
-              lineHeight: '1.4',
+              bottom: '75px',
+              width: '320px',
+              background: 'rgba(15, 23, 42, 0.85)',
+              backdropFilter: 'blur(16px)',
+              padding: '20px',
+              borderRadius: '16px',
+              boxShadow: '0 12px 30px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.2)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              color: '#e2e8f0',
+              fontSize: '13.5px',
+              lineHeight: '1.5',
               textAlign: 'left',
               zIndex: 100,
               pointerEvents: 'auto'
@@ -281,21 +323,22 @@ function Receptionist({ x, y, playerX, playerY }) {
               }}
               style={{
                 position: 'absolute',
-                top: '4px',
-                right: '8px',
+                top: '6px',
+                right: '10px',
                 background: 'none',
                 border: 'none',
                 fontSize: '18px',
                 fontWeight: 'bold',
                 cursor: 'pointer',
-                color: '#888',
+                color: '#94a3b8',
                 zIndex: 10,
                 padding: '4px'
               }}
             >
               &times;
             </button>
-            Welcome to AI Campus! I'm here to help. Walk around to explore, and get close to any of the 4 buildings to see an Enter option. Inside, you can create or join live challenges with other players. Good luck!
+            <strong style={{ color: '#818cf8', display: 'block', marginBottom: '4px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px' }}>AI Guide Bot</strong>
+            Welcome to the AI Campus! Walk around to explore, and approach any of the buildings to Plug In. Inside, you can create or join live coding/gaming challenges.
             <div style={{
               position: 'absolute',
               bottom: '-8px',
@@ -303,59 +346,73 @@ function Receptionist({ x, y, playerX, playerY }) {
               transform: 'translateX(-50%) rotate(45deg)',
               width: '14px',
               height: '14px',
-              backgroundColor: '#ffffff',
-              borderBottom: '2px solid #ddd',
-              borderRight: '2px solid #ddd',
+              background: 'rgba(15, 23, 42, 0.85)',
+              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              borderRight: '1px solid rgba(255,255,255,0.08)',
             }} />
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          transformOrigin: 'bottom center',
-          animation: 'blockyIdle 0.8s steps(2, end) infinite alternate'
-        }}
-      >
-        <div style={{ position: 'relative', width: '32px', height: '48px' }}>
+      {/* Holographic Projection Platform */}
+      <div style={{
+        width: '40px',
+        height: '10px',
+        borderRadius: '50%',
+        background: 'rgba(99, 102, 241, 0.2)',
+        border: '1.5px solid rgba(99, 102, 241, 0.6)',
+        boxShadow: '0 0 15px rgba(99, 102, 241, 0.6), inset 0 0 5px rgba(99, 102, 241, 0.8)',
+        marginBottom: '-2px',
+        position: 'relative'
+      }}>
+        {/* Projection light beam */}
+        <div style={{
+          position: 'absolute',
+          bottom: '5px',
+          left: '5%',
+          width: '90%',
+          height: '40px',
+          background: 'linear-gradient(to top, rgba(99, 102, 241, 0.25), transparent)',
+          clipPath: 'polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%)',
+          animation: 'pulse 2s infinite alternate'
+        }} />
+      </div>
+
+      {/* Holographic Guide Character */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        animation: 'holoIdle 2.5s ease-in-out infinite alternate',
+        opacity: 0.85,
+        filter: 'drop-shadow(0 0 8px rgba(99, 102, 241, 0.7))',
+        transformOrigin: 'bottom center'
+      }}>
+        <style>{`
+          @keyframes holoIdle {
+            0% { transform: translateY(0) scale(1); }
+            100% { transform: translateY(-4px) scale(1.02); }
+          }
+        `}</style>
+        <div style={{ position: 'relative', width: '28px', height: '40px' }}>
+          {/* Head */}
           <div style={{
-            position: 'absolute', top: '20px', left: '12px', width: '8px', height: '14px',
-            backgroundColor: '#d8b080', border: '2px solid #333', borderRadius: '2px', zIndex: 0,
+            position: 'absolute', top: 0, left: '6px', width: '16px', height: '16px',
+            backgroundColor: 'rgba(129, 140, 248, 0.7)', border: '1.5px solid #818cf8', borderRadius: '50%'
           }} />
+          {/* Body */}
           <div style={{
-            position: 'absolute', top: '34px', left: '6px', width: '8px', height: '14px',
-            backgroundColor: '#4a4a4a', border: '2px solid #333', borderRadius: '2px', zIndex: 0,
-          }} />
-          <div style={{
-            position: 'absolute', top: '20px', left: '4px', width: '24px', height: '16px',
-            backgroundColor: '#f5deb3', border: '2px solid #333', borderRadius: '2px', zIndex: 1,
-          }} />
-          <div style={{
-            position: 'absolute', top: 0, left: '6px', width: '20px', height: '20px',
-            backgroundColor: '#ffdbac', border: '2px solid #333', borderRadius: '2px', zIndex: 2,
-          }}>
-            <div style={{ position: 'absolute', top: '6px', left: '3px', width: '4px', height: '4px', backgroundColor: '#000' }} />
-            <div style={{ position: 'absolute', top: '6px', right: '3px', width: '4px', height: '4px', backgroundColor: '#000' }} />
-          </div>
-          <div style={{
-            position: 'absolute', top: '34px', left: '16px', width: '8px', height: '14px',
-            backgroundColor: '#5a5a5a', border: '2px solid #333', borderRadius: '2px', zIndex: 1,
-          }} />
-          <div style={{
-            position: 'absolute', top: '20px', left: '12px', width: '8px', height: '14px',
-            backgroundColor: '#ffdbac', border: '2px solid #333', borderRadius: '2px', zIndex: 3,
+            position: 'absolute', top: '16px', left: '2px', width: '24px', height: '24px',
+            backgroundColor: 'rgba(99, 102, 241, 0.5)', border: '1.5px solid #6366f1', borderRadius: '4px'
           }} />
         </div>
       </div>
       <div style={{
-        fontSize: '13px', marginTop: '6px', fontWeight: 'bold', color: 'white',
-        textShadow: '1px 1px 2px black, -1px -1px 2px black, 1px -1px 2px black, -1px 1px 2px black',
+        fontSize: '12px', marginTop: '6px', fontWeight: 'bold', color: '#818cf8',
+        textShadow: '0 0 8px rgba(129, 140, 248, 0.8)',
         whiteSpace: 'nowrap'
       }}>
-        Receptionist
+        AI Guide
       </div>
     </div>
   );
@@ -373,23 +430,40 @@ function Tree({ x, y }) {
       flexDirection: 'column',
       alignItems: 'center',
       animation: 'treeSway 4s ease-in-out infinite alternate',
-      transformOrigin: 'bottom center'
+      transformOrigin: 'bottom center',
+      pointerEvents: 'none'
     }}>
       <style>{`
         @keyframes treeSway {
-          0% { transform: translate(-50%, -100%) rotate(-4deg); }
-          100% { transform: translate(-50%, -100%) rotate(4deg); }
+          0% { transform: translate(-50%, -100%) rotate(-2.5deg); }
+          100% { transform: translate(-50%, -100%) rotate(2.5deg); }
         }
       `}</style>
+      {/* Holographic Glowing Leaf Node */}
       <div style={{
-        width: '70px', height: '70px', backgroundColor: '#2e8c3a', borderRadius: '50%',
-        boxShadow: 'inset -8px -8px 0px rgba(0,0,0,0.15), 0 8px 16px rgba(0,0,0,0.3)',
-        zIndex: 2, position: 'relative', top: '15px'
+        width: '42px',
+        height: '42px',
+        background: 'radial-gradient(circle, rgba(16, 185, 129, 0.85) 0%, rgba(5, 150, 105, 0.3) 100%)',
+        borderRadius: '50% 50% 0 50%',
+        transform: 'rotate(-45deg)',
+        border: '1.5px solid rgba(16, 185, 129, 0.6)',
+        boxShadow: '0 0 16px rgba(16, 185, 129, 0.45), inset 0 0 8px rgba(255,255,255,0.4)',
+        zIndex: 2,
+        position: 'relative',
+        top: '6px'
       }} />
+      {/* Trunk */}
       <div style={{
-        width: '14px', height: '35px', backgroundColor: '#5c4033', borderRadius: '3px',
-        boxShadow: 'inset -3px 0 0 rgba(0,0,0,0.2)', zIndex: 1
+        width: '6px',
+        height: '22px',
+        background: 'linear-gradient(to bottom, rgba(129, 140, 248, 0.65), rgba(99, 102, 241, 0.2))',
+        border: '1px solid rgba(129, 140, 248, 0.3)',
+        borderRadius: '3px',
+        boxShadow: '0 0 8px rgba(99, 102, 241, 0.3)',
+        zIndex: 1
       }} />
     </div>
   );
 }
+
+export default CampusWorld;
