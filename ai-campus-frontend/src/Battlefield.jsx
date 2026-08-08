@@ -79,6 +79,8 @@ function Battlefield({ token, gameId, onExit }) {
     });
 
     socket.on('battle:shot-fired', (data) => {
+      if (data.shooterId === myUserId) return; // Ignore local player shots to prevent duplicate tracers
+
       setPlayers((currentPlayers) => {
         const shooter = currentPlayers.find((p) => p.userId === data.shooterId);
         if (shooter && data.hitPoint) {
@@ -90,14 +92,34 @@ function Battlefield({ token, gameId, onExit }) {
       });
     });
 
-    socket.on('battle:hit', () => {
-      // position/HP already reflected via the next battle:update
+    socket.on('battle:hit', (data) => {
+      setPlayers((currentPlayers) =>
+        currentPlayers.map((p) =>
+          p.userId === data.targetId ? { ...p, hp: data.newHp } : p
+        )
+      );
     });
 
     socket.on('battle:kill', (data) => {
       const feedId = `${data.victimId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       setKillFeed((prev) => [...prev, { id: feedId, text: `${data.killerName} ➔ ${data.victimName}` }]);
       setTimeout(() => setKillFeed((prev) => prev.filter((k) => k.id !== feedId)), 4000);
+
+      // Set victim HP to 0 immediately so they disappear on screen
+      setPlayers((currentPlayers) =>
+        currentPlayers.map((p) =>
+          p.userId === data.victimId ? { ...p, hp: 0 } : p
+        )
+      );
+    });
+
+    socket.on('battle:respawn', (data) => {
+      // Instantly position the player and set health back to 100
+      setPlayers((currentPlayers) =>
+        currentPlayers.map((p) =>
+          p.userId === data.userId ? { ...p, x: data.x, y: data.y, hp: 100 } : p
+        )
+      );
     });
 
     socket.on('battle:match-ended', (data) => {
@@ -111,7 +133,7 @@ function Battlefield({ token, gameId, onExit }) {
 
     return () => socket.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameId, token, phase === 'in_progress']);
+  }, [gameId, token, phase === 'in_progress', myUserId]);
 
   // ── Aim Assist Target Snapping & Locking Logic ──
   useEffect(() => {
@@ -171,9 +193,46 @@ function Battlefield({ token, gameId, onExit }) {
     };
   };
 
+  const playersRef = useRef([]);
+  const lockedPlayerIdRef = useRef(null);
+
+  useEffect(() => {
+    playersRef.current = players;
+  }, [players]);
+
+  useEffect(() => {
+    lockedPlayerIdRef.current = lockedPlayerId;
+  }, [lockedPlayerId]);
+
+  const createLocalTracer = () => {
+    const currentPlayers = playersRef.current;
+    const me = currentPlayers.find((p) => p.userId === myUserId);
+    if (!me) return;
+
+    const angle = aimAngleRef.current;
+    
+    // Find hit point: if locked, hit the enemy. Otherwise, project 1200px out.
+    let targetX = me.x + Math.cos(angle) * 1200;
+    let targetY = me.y + Math.sin(angle) * 1200;
+
+    const currentLockedId = lockedPlayerIdRef.current;
+    if (currentLockedId) {
+      const lockedEnemy = currentPlayers.find((p) => p.userId === currentLockedId);
+      if (lockedEnemy) {
+        targetX = lockedEnemy.x;
+        targetY = lockedEnemy.y;
+      }
+    }
+
+    const tracerId = `local-${myUserId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setTracers((prev) => [...prev, { id: tracerId, x1: me.x, y1: me.y, x2: targetX, y2: targetY }]);
+    setTimeout(() => setTracers((prev) => prev.filter((t) => t.id !== tracerId)), 120);
+  };
+
   const fireOnce = () => {
     if (!socketRef.current) return;
     socketRef.current.emit('battle:fire', { gameId, token, angle: aimAngleRef.current });
+    createLocalTracer();
   };
 
   const startFiring = () => {
@@ -371,6 +430,16 @@ function Battlefield({ token, gameId, onExit }) {
 
   return (
     <div style={{ padding: '24px 20px', maxWidth: '1000px', margin: '0 auto', color: '#e2e8f0' }}>
+      <style>{`
+        @keyframes bullet-fly {
+          0% {
+            transform: translate(0px, 0px);
+          }
+          100% {
+            transform: translate(var(--dx), var(--dy));
+          }
+        }
+      `}</style>
       
       {/* Top HUD bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '16px' }}>
@@ -432,9 +501,10 @@ function Battlefield({ token, gameId, onExit }) {
       <div
         ref={arenaRef}
         onMouseMove={handleMouseMove}
-        onMouseDown={startFiring}
+        onMouseDown={(e) => { e.preventDefault(); startFiring(); }}
         onMouseUp={stopFiring}
         onMouseLeave={stopFiring}
+        onDoubleClick={(e) => { e.preventDefault(); fireOnce(); }}
         style={{
           position: 'relative',
           width: '100%',
@@ -450,7 +520,11 @@ function Battlefield({ token, gameId, onExit }) {
           overflow: 'hidden',
           border: '1.5px solid rgba(99, 102, 241, 0.15)',
           boxShadow: '0 20px 50px rgba(0,0,0,0.7), inset 0 0 40px rgba(99, 102, 241, 0.05)',
-          cursor: 'none' // hide standard mouse cursor
+          cursor: 'none', // hide standard mouse cursor
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          msUserSelect: 'none',
+          MozUserSelect: 'none'
         }}
       >
         {/* Arena obstacles / walls */}
@@ -467,7 +541,8 @@ function Battlefield({ token, gameId, onExit }) {
               background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
               border: '1.5px solid rgba(99, 102, 241, 0.3)',
               borderRadius: '6px',
-              boxShadow: '0 4px 15px rgba(0, 0, 0, 0.5), inset 0 0 8px rgba(99, 102, 241, 0.1)'
+              boxShadow: '0 4px 15px rgba(0, 0, 0, 0.5), inset 0 0 8px rgba(99, 102, 241, 0.1)',
+              pointerEvents: 'none'
             }}
           />
         ))}
@@ -480,14 +555,72 @@ function Battlefield({ token, gameId, onExit }) {
               <feComposite in="SourceGraphic" in2="blur" operator="over" />
             </filter>
           </defs>
-          {tracers.map((t) => (
-            <g key={t.id}>
-              {/* Outer bright glow line */}
-              <line x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} stroke="#f97316" strokeWidth="4.5" opacity="0.4" filter="url(#glow)" />
-              {/* Core hot tracer line */}
-              <line x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} stroke="#fff" strokeWidth="1.8" opacity="0.95" />
+          {/* Aiming guideline */}
+          {me && me.hp > 0 && (
+            <g>
+              {/* Outer bright laser guide glow */}
+              <line
+                x1={me.x}
+                y1={me.y}
+                x2={me.x + Math.cos(aimAngle) * 2000}
+                y2={me.y + Math.sin(aimAngle) * 2000}
+                stroke="#f97316"
+                strokeWidth="3.5"
+                opacity="0.3"
+                strokeDasharray="6 8"
+                filter="url(#glow)"
+              />
+              {/* Core guide line */}
+              <line
+                x1={me.x}
+                y1={me.y}
+                x2={me.x + Math.cos(aimAngle) * 2000}
+                y2={me.y + Math.sin(aimAngle) * 2000}
+                stroke="#f97316"
+                strokeWidth="1.2"
+                opacity="0.75"
+                strokeDasharray="6 8"
+              />
             </g>
-          ))}
+          )}
+          {tracers.map((t) => {
+            const dx = t.x2 - t.x1;
+            const dy = t.y2 - t.y1;
+            const angle = Math.atan2(dy, dx);
+            const bulletLength = 35;
+            return (
+              <g
+                key={t.id}
+                style={{
+                  '--dx': `${dx}px`,
+                  '--dy': `${dy}px`,
+                  animation: 'bullet-fly 0.12s linear forwards'
+                }}
+              >
+                {/* Outer glowing plasma streak */}
+                <line
+                  x1={t.x1}
+                  y1={t.y1}
+                  x2={t.x1 + Math.cos(angle) * bulletLength}
+                  y2={t.y1 + Math.sin(angle) * bulletLength}
+                  stroke="#f97316"
+                  strokeWidth="4.5"
+                  opacity="0.8"
+                  filter="url(#glow)"
+                />
+                {/* Core bright bullet hot center */}
+                <line
+                  x1={t.x1}
+                  y1={t.y1}
+                  x2={t.x1 + Math.cos(angle) * bulletLength}
+                  y2={t.y1 + Math.sin(angle) * bulletLength}
+                  stroke="#fff"
+                  strokeWidth="1.8"
+                  opacity="1"
+                />
+              </g>
+            );
+          })}
         </svg>
 
         {/* Render Players */}
@@ -507,7 +640,8 @@ function Battlefield({ token, gameId, onExit }) {
                 flexDirection: 'column',
                 alignItems: 'center',
                 gap: '4px',
-                zIndex: isMe ? 10 : 5
+                zIndex: isMe ? 10 : 5,
+                pointerEvents: 'none'
               }}
             >
               {/* Target lock overlay bracket around enemy */}
