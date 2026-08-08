@@ -17,7 +17,6 @@ const NAV_TABS = [
   { id: 'campus', label: '🗺️ Campus' },
   { id: 'labs', label: '🏛️ Labs' },
   { id: 'allchallenges', label: '⚔️ All Challenges' },
-  { id: 'gaminglab', label: '🎮 Gaming Lab' },
 ];
 
 const getCategoryOptionsFor = (buildingId) => {
@@ -133,6 +132,14 @@ function App() {
     setActiveBuildingId(buildingId);
     setActiveBuildingName(buildingName);
     setView('lab');
+  };
+
+  const handleSelectLab = (labId, labName) => {
+    if (labId === 'gaminglab') {
+      setView('gaminglab');
+    } else {
+      handleEnterBuilding(labId, labName);
+    }
   };
 
   const handleEnterChallenge = (challengeId) => {
@@ -350,7 +357,7 @@ function App() {
               myPlayerId={myPlayerId}
               heldKeys={heldKeys}
               sendMoveInput={sendMoveInput}
-              onEnterBuilding={handleEnterBuilding}
+              onEnterBuilding={handleSelectLab}
               speakingPeerIds={speakingPeerIds}
             />
 
@@ -373,7 +380,7 @@ function App() {
           <div style={{ height: '100%', overflowY: 'auto' }}>
             <Labs
               labs={labs}
-              onSelectLab={handleEnterBuilding}
+              onSelectLab={handleSelectLab}
             />
           </div>
         )}

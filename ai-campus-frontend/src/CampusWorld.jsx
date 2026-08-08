@@ -91,7 +91,18 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
         <Tree x={1400} y={1000} />
         <Tree x={2200} y={900} />
         <Tree x={2000} y={1450} />
-        <Tree x={1200} y={800} />
+
+        {/* Gaming Lab Center Building */}
+        <Building
+          id="gaminglab"
+          x={1200}
+          y={800}
+          name="Gaming Lab"
+          color="#3b82f6"
+          playerX={myPlayer.x}
+          playerY={myPlayer.y}
+          onEnter={onEnterBuilding}
+        />
 
         {/* Buildings dynamically generated from backend labs list */}
         {labs.map(lab => (
