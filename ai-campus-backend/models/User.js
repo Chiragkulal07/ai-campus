@@ -35,6 +35,14 @@ const userSchema = new mongoose.Schema({
     // this is what's now shown instead of XP.
     totalCorrectAnswers: { type: Number, default: 0 }
   },
+  gameHistory: [
+    {
+      matchName: String,
+      kills: Number,
+      finalRank: Number,
+      playedAt: { type: Date, default: Date.now }
+    }
+  ],
 
   createdAt: {
     type: Date,

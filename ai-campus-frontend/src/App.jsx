@@ -9,12 +9,15 @@ import ChallengeRoom from './ChallengeRoom';
 import Reception from './Reception';
 import CampusWorld from './CampusWorld';
 import useVoiceChat from './Usevoicechat';
+import GamingLab from './GamingLab';
+import Battlefield from './Battlefield';
 
 const NAV_TABS = [
   { id: 'reception', label: '🏠 Reception' },
   { id: 'campus', label: '🗺️ Campus' },
   { id: 'labs', label: '🏛️ Labs' },
   { id: 'allchallenges', label: '⚔️ All Challenges' },
+  { id: 'gaminglab', label: '🎮 Gaming Lab' },
 ];
 
 const getCategoryOptionsFor = (buildingId) => {
@@ -45,6 +48,7 @@ function App() {
   const [loadingMe, setLoadingMe] = useState(true);
   const [players, setPlayers] = useState([]);
   const [view, setView] = useState('campus');
+  const [activeGameId, setActiveGameId] = useState(null);
   const [activeChallengeId, setActiveChallengeId] = useState(null);
   const [activeBuildingId, setActiveBuildingId] = useState(null);
   const [activeBuildingName, setActiveBuildingName] = useState(null);
@@ -136,6 +140,11 @@ function App() {
     setView('challenge');
   };
 
+  const handleEnterBattlefield = (gameId) => {
+    setActiveGameId(gameId);
+    setView('battlefield');
+  };
+
   const handleBackToMap = () => {
     setActiveBuildingId(null);
     setActiveBuildingName(null);
@@ -165,6 +174,15 @@ function App() {
       myUserId={me.id}
       challengeId={activeChallengeId}
       onExit={() => setView('lab')}
+    />
+  );
+
+  // ── Battlefield (full takeover, own screen, no nav bar while fighting) ───
+  if (view === 'battlefield') return (
+    <Battlefield
+      token={token}
+      gameId={activeGameId}
+      onExit={() => setView('gaminglab')}
     />
   );
 
@@ -366,6 +384,16 @@ function App() {
             <AllChallenges
               token={token}
               onEnterChallenge={handleEnterChallenge}
+            />
+          </div>
+        )}
+
+        {/* Gaming Lab */}
+        {view === 'gaminglab' && (
+          <div style={{ height: '100%', overflowY: 'auto' }}>
+            <GamingLab
+              token={token}
+              onEnterBattlefield={handleEnterBattlefield}
             />
           </div>
         )}

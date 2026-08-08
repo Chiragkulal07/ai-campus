@@ -10,6 +10,7 @@ const Challenge = require('./models/Challenge');
 const questionBank = require('./data/questionBank');
 const { io: ioClient } = require('socket.io-client');
 const internalSocket = ioClient('http://localhost:4001');
+const GameMatch = require('./models/GameMatch');
 
 internalSocket.on('connect', () => {
   console.log('api-server connected to realtime-server for broadcasting');
@@ -64,6 +65,105 @@ app.post('/auth/login', async (req, res) => {
     token,
     user: { id: user._id, email: user.email, displayName: user.displayName }
   });
+});
+
+// Create a new game match (lobby)
+app.post('/games', requireAuth, async (req, res) => {
+  const { name, maxPlayers, durationSec } = req.body;
+
+  if (!name || !durationSec) {
+    return res.status(400).json({ error: 'name and durationSec are required' });
+  }
+
+  const creator = await User.findById(req.userId);
+  if (!creator) {
+    return res.status(404).json({ error: 'creator user not found' });
+  }
+
+  const match = await GameMatch.create({
+    name,
+    maxPlayers: maxPlayers || 8,
+    durationSec,
+    creatorId: req.userId,
+    creatorName: creator.displayName
+  });
+
+  internalSocket.emit('internal:game-created', {
+    id: match._id,
+    name: match.name,
+    maxPlayers: match.maxPlayers,
+    durationSec: match.durationSec,
+    currentParticipants: 0,
+    creatorName: match.creatorName,
+    status: match.status
+  });
+
+  res.status(201).json({
+    id: match._id,
+    name: match.name,
+    maxPlayers: match.maxPlayers,
+    durationSec: match.durationSec,
+    status: match.status,
+    creatorName: match.creatorName
+  });
+});
+
+// List open game matches
+app.get('/games', async (req, res) => {
+  const matches = await GameMatch.find({ status: 'OPEN_FOR_JOIN' })
+    .select('name maxPlayers durationSec participants creatorName status createdAt')
+    .sort({ createdAt: -1 });
+
+  const summarized = matches.map((m) => ({
+    id: m._id,
+    name: m.name,
+    maxPlayers: m.maxPlayers,
+    durationSec: m.durationSec,
+    currentParticipants: m.participants.length,
+    creatorName: m.creatorName,
+    status: m.status
+  }));
+
+  res.json(summarized);
+});
+
+// Join a game match
+app.post('/games/:id/join', requireAuth, async (req, res) => {
+  const match = await GameMatch.findById(req.params.id);
+  if (!match) {
+    return res.status(404).json({ error: 'game not found' });
+  }
+
+  if (match.status !== 'OPEN_FOR_JOIN') {
+    return res.status(400).json({ error: 'this game is no longer open to join' });
+  }
+
+  if (match.participants.length >= match.maxPlayers) {
+    return res.status(400).json({ error: 'this game is full' });
+  }
+
+  const alreadyJoined = match.participants.some((p) => p.userId === req.userId);
+  if (alreadyJoined) {
+    return res.status(409).json({ error: 'you already joined this game' });
+  }
+
+  const user = await User.findById(req.userId);
+  match.participants.push({ userId: req.userId, displayName: user.displayName, kills: 0 });
+  await match.save();
+
+  res.json({
+    id: match._id,
+    participants: match.participants.map((p) => ({ userId: p.userId, displayName: p.displayName }))
+  });
+});
+
+// Get full details of one game match
+app.get('/games/:id', requireAuth, async (req, res) => {
+  const match = await GameMatch.findById(req.params.id);
+  if (!match) {
+    return res.status(404).json({ error: 'game not found' });
+  }
+  res.json(match);
 });
 
 // Get the logged-in user's own profile
@@ -237,6 +337,14 @@ app.put('/profile/avatar', requireAuth, async (req, res) => {
   res.json({ avatar: user.avatar });
 });
 
+// Get the logged-in user's game (Gaming Lab) match history
+app.get('/profile/me/games', requireAuth, async (req, res) => {
+  const user = await User.findById(req.userId).select('gameHistory');
+  if (!user) {
+    return res.status(404).json({ error: 'user not found' });
+  }
+  res.json(user.gameHistory || []);
+});
 // Get the list of all available labs (buildings)
 app.get('/labs', (req, res) => {
   res.json([
