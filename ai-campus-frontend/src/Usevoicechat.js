@@ -1,51 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-// Global voice chat over a mesh of WebRTC peer connections.
+// Global voice + video chat over a mesh of WebRTC peer connections.
 //
-// Joining the voice mesh (so you can HEAR others) and enabling your
-// microphone (so others can hear YOU) are two separate things. Everyone
-// auto-joins the mesh silently the moment they connect — the mic button
-// only controls whether your own audio track is attached and enabled.
-// This means you can hear anyone whose mic is on, regardless of whether
-// your own mic is on.
+// Joining the mesh (so you can HEAR/SEE others) and enabling your own
+// mic/camera (so others can hear/see YOU) are separate things. Everyone
+// auto-joins the mesh silently on connect — the mic and video buttons
+// each independently control only your own outgoing track.
 //
 // ── Production notes ──
 // 1. STUN alone is NOT enough once real users are on different networks/
-//    behind restrictive NATs or symmetric NATs (common on mobile data,
-//    corporate networks, some ISPs). You need a TURN server, or calls
-//    between those users will simply never connect (ICE will fail
-//    silently — no error, just permanent "connecting").
-//    Configure via Vite env vars:
-//      VITE_TURN_URL=turn:your-turn-host:3478
-//      VITE_TURN_USERNAME=xxxx
-//      VITE_TURN_CREDENTIAL=xxxx
-//    For real production traffic, prefer a provider that issues short-lived
-//    TURN credentials (Twilio NTS, Cloudflare Calls, Metered, or your own
-//    coturn with a credentials endpoint) rather than a single static
-//    username/password baked into the client bundle.
-// 2. Some browsers block autoplay of a non-muted <audio> element until the
-//    page has a "sticky" user gesture. We handle this below by retrying
-//    play() on the first user interaction if it was initially blocked.
+//    behind restrictive NATs. You need a TURN server or calls will fail
+//    to connect silently. Configure via:
+//      VITE_TURN_URL / VITE_TURN_USERNAME / VITE_TURN_CREDENTIAL
+// 2. Video is bandwidth-heavier than audio — this mesh approach (everyone
+//    connects to everyone) is fine for small groups. If you later scale to
+//    many simultaneous video broadcasters, that's when an SFU (planned
+//    separately) becomes necessary — noted, not needed yet.
 export default function useVoiceChat(socket) {
   const [isMicOn, setIsMicOn] = useState(false);
+  const [isVideoOn, setIsVideoOn] = useState(false);
   const [speakingPeerIds, setSpeakingPeerIds] = useState([]);
   const [micError, setMicError] = useState(null);
+  const [videoError, setVideoError] = useState(null);
+  const [remoteVideoStreams, setRemoteVideoStreams] = useState({}); // { peerId: MediaStream }
 
-  const localStreamRef = useRef(null);
-  const peerConnectionsRef = useRef(new Map());   // peerId -> RTCPeerConnection
-  const transceiversRef = useRef(new Map());       // peerId -> RTCRtpTransceiver (the audio one)
-  const audioElementsRef = useRef(new Map());       // peerId -> HTMLAudioElement
-  const analysersRef = useRef(new Map());            // peerId -> { rafId, audioCtx }
-  const pendingPlayRef = useRef(new Set());           // audio elements blocked by autoplay policy
+  const localAudioStreamRef = useRef(null);
+  const localVideoStreamRef = useRef(null);
+  const peerConnectionsRef = useRef(new Map());     // peerId -> RTCPeerConnection
+  const transceiversRef = useRef(new Map());          // peerId -> { audio, video }
+  const audioElementsRef = useRef(new Map());          // peerId -> hidden <audio>
+  const analysersRef = useRef(new Map());               // peerId -> { rafId, audioCtx }
+  const pendingPlayRef = useRef(new Set());               // audio elements blocked by autoplay policy
 
-  // "Perfect negotiation" bookkeeping — prevents two peers from colliding
-  // when both try to renegotiate at the same time (e.g. both turn mic on together).
   const politeRef = useRef(new Map());       // peerId -> boolean
   const makingOfferRef = useRef(new Map());   // peerId -> boolean
 
   const getIceServers = () => {
     const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
-
     const turnUrl = import.meta.env?.VITE_TURN_URL;
     const turnUsername = import.meta.env?.VITE_TURN_USERNAME;
     const turnCredential = import.meta.env?.VITE_TURN_CREDENTIAL;
@@ -53,15 +44,11 @@ export default function useVoiceChat(socket) {
     if (turnUrl && turnUsername && turnCredential) {
       servers.push({ urls: turnUrl, username: turnUsername, credential: turnCredential });
     } else if (import.meta.env?.PROD) {
-      // Don't fail silently in production — this is the #1 cause of
-      // "works on my machine, nobody else can hear anyone" bugs.
       console.warn(
         '[voiceChat] No TURN server configured. Calls between users on ' +
-        'different networks/behind restrictive NATs will likely fail to connect. ' +
-        'Set VITE_TURN_URL / VITE_TURN_USERNAME / VITE_TURN_CREDENTIAL.'
+        'different networks/behind restrictive NATs will likely fail to connect.'
       );
     }
-
     return servers;
   };
 
@@ -71,7 +58,7 @@ export default function useVoiceChat(socket) {
       pendingPlayRef.current.forEach((audioEl) => {
         audioEl.play()
           .then(() => pendingPlayRef.current.delete(audioEl))
-          .catch(() => { /* still blocked, will retry on next gesture */ });
+          .catch(() => {});
       });
     };
     document.addEventListener('click', tryUnlock);
@@ -88,7 +75,6 @@ export default function useVoiceChat(socket) {
     const playPromise = audioEl.play();
     if (playPromise && typeof playPromise.catch === 'function') {
       playPromise.catch((err) => {
-        // Autoplay was blocked — queue it to retry on the next user gesture.
         console.warn('autoplay blocked, will retry on next user interaction:', err.message);
         pendingPlayRef.current.add(audioEl);
       });
@@ -108,15 +94,7 @@ export default function useVoiceChat(socket) {
   };
 
   const watchVolume = (peerId, stream) => {
-    // Guard against being called with something that isn't a real stream
-    // with live audio tracks (the root cause of the previous bug).
-    if (!(stream instanceof MediaStream) || stream.getAudioTracks().length === 0) {
-      console.warn('watchVolume: no valid audio stream for', peerId);
-      return;
-    }
-
-    // If we were already watching this peer (e.g. their track was replaced
-    // during renegotiation), tear down the old analyser first.
+    if (!(stream instanceof MediaStream) || stream.getAudioTracks().length === 0) return;
     stopWatchingVolume(peerId);
 
     try {
@@ -151,27 +129,42 @@ export default function useVoiceChat(socket) {
     }
   };
 
-  // Creates a peer connection to a given peer. If we already have a local
-  // mic stream, we send it immediately (sendrecv). If not, we still create
-  // a "receive-only" audio transceiver so we can hear them the moment they
-  // start talking, even though we're not transmitting anything ourselves.
+  const clearRemoteVideo = (peerId) => {
+    setRemoteVideoStreams((prev) => {
+      if (!(peerId in prev)) return prev;
+      const next = { ...prev };
+      delete next[peerId];
+      return next;
+    });
+  };
+
+  // Creates a peer connection with BOTH an audio and a video transceiver.
+  // Each starts recvonly unless we already have that specific local track —
+  // audio and video are upgraded to sendrecv independently, whenever the
+  // corresponding toggle is turned on.
   const createPeerConnection = useCallback((peerId) => {
     const pc = new RTCPeerConnection({ iceServers: getIceServers() });
 
     politeRef.current.set(peerId, socket.id < peerId);
     makingOfferRef.current.set(peerId, false);
 
-    let transceiver;
-    if (localStreamRef.current) {
-      const track = localStreamRef.current.getAudioTracks()[0];
-      transceiver = pc.addTransceiver(track, {
-        direction: 'sendrecv',
-        streams: [localStreamRef.current],
-      });
+    let audioTransceiver;
+    if (localAudioStreamRef.current) {
+      const track = localAudioStreamRef.current.getAudioTracks()[0];
+      audioTransceiver = pc.addTransceiver(track, { direction: 'sendrecv', streams: [localAudioStreamRef.current] });
     } else {
-      transceiver = pc.addTransceiver('audio', { direction: 'recvonly' });
+      audioTransceiver = pc.addTransceiver('audio', { direction: 'recvonly' });
     }
-    transceiversRef.current.set(peerId, transceiver);
+
+    let videoTransceiver;
+    if (localVideoStreamRef.current) {
+      const track = localVideoStreamRef.current.getVideoTracks()[0];
+      videoTransceiver = pc.addTransceiver(track, { direction: 'sendrecv', streams: [localVideoStreamRef.current] });
+    } else {
+      videoTransceiver = pc.addTransceiver('video', { direction: 'recvonly' });
+    }
+
+    transceiversRef.current.set(peerId, { audio: audioTransceiver, video: videoTransceiver });
 
     pc.onnegotiationneeded = async () => {
       try {
@@ -200,31 +193,26 @@ export default function useVoiceChat(socket) {
     };
 
     pc.ontrack = (event) => {
-      // IMPORTANT: don't trust event.streams[0] to always be populated.
-      // replaceTrack() on an existing sender (used when upgrading a
-      // recvonly connection to sendrecv after mic-on) does not always
-      // carry stream association through cleanly on every browser, and
-      // relying on it silently breaks playback with no visible error
-      // other than a downstream createMediaStreamSource crash. Building
-      // our own stream from the track guarantees we always have audio.
       const remoteStream = event.streams[0] || new MediaStream([event.track]);
 
-      let audioEl = audioElementsRef.current.get(peerId);
-      if (!audioEl) {
-        audioEl = document.createElement('audio');
-        audioEl.autoplay = true;
-        audioEl.playsInline = true;
-        audioEl.dataset.peerId = peerId;
-        document.body.appendChild(audioEl);
-        audioElementsRef.current.set(peerId, audioEl);
+      if (event.track.kind === 'audio') {
+        let audioEl = audioElementsRef.current.get(peerId);
+        if (!audioEl) {
+          audioEl = document.createElement('audio');
+          audioEl.autoplay = true;
+          audioEl.playsInline = true;
+          audioEl.dataset.peerId = peerId;
+          document.body.appendChild(audioEl);
+          audioElementsRef.current.set(peerId, audioEl);
+        }
+        audioEl.srcObject = remoteStream;
+        playAudioElement(audioEl);
+        watchVolume(peerId, remoteStream);
+        event.track.addEventListener('ended', () => stopWatchingVolume(peerId));
+      } else if (event.track.kind === 'video') {
+        setRemoteVideoStreams((prev) => ({ ...prev, [peerId]: remoteStream }));
+        event.track.addEventListener('ended', () => clearRemoteVideo(peerId));
       }
-      audioEl.srcObject = remoteStream;
-      playAudioElement(audioEl);
-      watchVolume(peerId, remoteStream);
-
-      // If the track itself gets replaced later (e.g. mic re-enabled with
-      // a fresh getUserMedia call), refresh the volume watcher.
-      event.track.addEventListener('ended', () => stopWatchingVolume(peerId));
     };
 
     peerConnectionsRef.current.set(peerId, pc);
@@ -249,10 +237,10 @@ export default function useVoiceChat(socket) {
       pendingPlayRef.current.delete(audioEl);
     }
     stopWatchingVolume(peerId);
+    clearRemoteVideo(peerId);
   };
 
-  // ── Auto-join the voice mesh the moment we have a connected socket ──
-  // This is what lets everyone HEAR others without needing their own mic on.
+  // ── Auto-join the mesh the moment we have a connected socket ──
   useEffect(() => {
     if (!socket) return;
     socket.emit('voice:join');
@@ -261,12 +249,19 @@ export default function useVoiceChat(socket) {
       socket.emit('voice:leave');
       peerConnectionsRef.current.forEach((_, peerId) => closePeerConnection(peerId));
       peerConnectionsRef.current.clear();
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((t) => t.stop());
-        localStreamRef.current = null;
+
+      if (localAudioStreamRef.current) {
+        localAudioStreamRef.current.getTracks().forEach((t) => t.stop());
+        localAudioStreamRef.current = null;
+      }
+      if (localVideoStreamRef.current) {
+        localVideoStreamRef.current.getTracks().forEach((t) => t.stop());
+        localVideoStreamRef.current = null;
       }
       setSpeakingPeerIds([]);
+      setRemoteVideoStreams({});
       setIsMicOn(false);
+      setIsVideoOn(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
@@ -275,26 +270,21 @@ export default function useVoiceChat(socket) {
   useEffect(() => {
     if (!socket) return;
 
-    // We just joined — connect out to everyone already in the mesh
     const handleExistingParticipants = (existingIds) => {
       existingIds.forEach((peerId) => {
         if (!peerConnectionsRef.current.has(peerId)) {
           createPeerConnection(peerId);
-          // onnegotiationneeded fires automatically and sends the offer
         }
       });
     };
 
-    // Someone new joined — we wait for their offer, nothing to do yet
     const handlePeerJoined = () => {
-      // no-op
+      // no-op — we wait for their offer
     };
 
     const handleSignal = async ({ from, data }) => {
       let pc = peerConnectionsRef.current.get(from);
-      if (!pc) {
-        pc = createPeerConnection(from);
-      }
+      if (!pc) pc = createPeerConnection(from);
 
       const polite = politeRef.current.get(from);
 
@@ -343,38 +333,31 @@ export default function useVoiceChat(socket) {
     };
   }, [socket, createPeerConnection]);
 
-  // ── Mic toggle — only controls whether WE transmit, not mesh membership ──
+  // ── Mic toggle — soft mute, keeps the same track alive ──
   const toggleMic = async () => {
     if (!socket) return;
     setMicError(null);
 
     if (isMicOn) {
-      // Soft mute — stop transmitting, but stay connected so we keep hearing others
-      if (localStreamRef.current) {
-        localStreamRef.current.getAudioTracks().forEach((t) => { t.enabled = false; });
+      if (localAudioStreamRef.current) {
+        localAudioStreamRef.current.getAudioTracks().forEach((t) => { t.enabled = false; });
       }
       setIsMicOn(false);
       return;
     }
 
-    if (!localStreamRef.current) {
+    if (!localAudioStreamRef.current) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        localStreamRef.current = stream;
+        localAudioStreamRef.current = stream;
         const track = stream.getAudioTracks()[0];
 
-        // Upgrade every existing receive-only connection to also send our audio
         peerConnectionsRef.current.forEach((pc, peerId) => {
-          const transceiver = transceiversRef.current.get(peerId);
-          if (transceiver) {
-            transceiver.sender.replaceTrack(track);
-            // replaceTrack() alone does NOT reliably associate a MediaStream
-            // with the sender on every browser — without this, the remote
-            // side's ontrack can fire with an empty event.streams array.
-            if (transceiver.sender.setStreams) {
-              transceiver.sender.setStreams(stream);
-            }
-            transceiver.direction = 'sendrecv';
+          const pair = transceiversRef.current.get(peerId);
+          if (pair && pair.audio) {
+            pair.audio.sender.replaceTrack(track);
+            if (pair.audio.sender.setStreams) pair.audio.sender.setStreams(stream);
+            pair.audio.direction = 'sendrecv';
           } else {
             pc.addTrack(track, stream);
           }
@@ -389,12 +372,70 @@ export default function useVoiceChat(socket) {
         return;
       }
     } else {
-      // We already have a stream from before (just soft-muted) — re-enable it
-      localStreamRef.current.getAudioTracks().forEach((t) => { t.enabled = true; });
+      localAudioStreamRef.current.getAudioTracks().forEach((t) => { t.enabled = true; });
     }
 
     setIsMicOn(true);
   };
 
-  return { isMicOn, toggleMic, speakingPeerIds, micError };
+  // ── Video toggle — fully stops the camera track when off, not just muted,
+  // since people expect the camera's hardware light to actually turn off. ──
+  const toggleVideo = async () => {
+    if (!socket) return;
+    setVideoError(null);
+
+    if (isVideoOn) {
+      if (localVideoStreamRef.current) {
+        localVideoStreamRef.current.getTracks().forEach((t) => t.stop());
+        localVideoStreamRef.current = null;
+      }
+      peerConnectionsRef.current.forEach((pc, peerId) => {
+        const pair = transceiversRef.current.get(peerId);
+        if (pair && pair.video) {
+          pair.video.sender.replaceTrack(null);
+          pair.video.direction = 'recvonly';
+        }
+      });
+      setIsVideoOn(false);
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      localVideoStreamRef.current = stream;
+      const track = stream.getVideoTracks()[0];
+
+      peerConnectionsRef.current.forEach((pc, peerId) => {
+        const pair = transceiversRef.current.get(peerId);
+        if (pair && pair.video) {
+          pair.video.sender.replaceTrack(track);
+          if (pair.video.sender.setStreams) pair.video.sender.setStreams(stream);
+          pair.video.direction = 'sendrecv';
+        } else {
+          pc.addTrack(track, stream);
+        }
+      });
+
+      setIsVideoOn(true);
+    } catch (err) {
+      console.error('camera permission denied or unavailable:', err);
+      setVideoError(
+        err.name === 'NotAllowedError'
+          ? 'Camera access was denied. Check your browser permissions.'
+          : 'Could not access your camera. Please check your device settings.'
+      );
+    }
+  };
+
+  return {
+    isMicOn,
+    toggleMic,
+    micError,
+    isVideoOn,
+    toggleVideo,
+    videoError,
+    speakingPeerIds,
+    remoteVideoStreams,     // { peerId: MediaStream } — for rendering <video> tiles
+    localVideoStream: localVideoStreamRef.current, // your own camera preview, if you want one
+  };
 }

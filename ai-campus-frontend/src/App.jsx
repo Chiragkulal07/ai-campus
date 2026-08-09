@@ -57,8 +57,14 @@ function App() {
   const socketRef = useRef(null);
   const heldKeys = useRef({ up: false, down: false, left: false, right: false });
 
-  // Voice chat hook — only becomes active once the socket is connected
-  const { isMicOn, toggleMic, speakingPeerIds } = useVoiceChat(socketReady ? socketRef.current : null);
+  // Voice + video chat hook — only becomes active once the socket is connected
+  const {
+    isMicOn, toggleMic,
+    isVideoOn, toggleVideo,
+    speakingPeerIds,
+    remoteVideoStreams,
+    localVideoStream,
+  } = useVoiceChat(socketReady ? socketRef.current : null);
 
   useEffect(() => {
     fetch('http://localhost:4000/labs')
@@ -287,6 +293,25 @@ function App() {
             {isMicOn ? '🎤' : '🔇'}
           </button>
 
+          {/* Video toggle button */}
+          <button
+            onClick={toggleVideo}
+            title={isVideoOn ? 'Turn camera off' : 'Turn camera on'}
+            style={{
+              width: '36px', height: '36px', borderRadius: '50%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: isVideoOn ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
+              border: isVideoOn ? '1px solid rgba(59,130,246,0.4)' : '1px solid rgba(255,255,255,0.08)',
+              color: isVideoOn ? '#3b82f6' : '#64748b',
+              fontSize: '16px', cursor: 'pointer',
+              boxShadow: isVideoOn ? '0 0 0 4px rgba(59,130,246,0.15)' : 'none',
+              animation: isVideoOn ? 'videoPulse 1.6s ease-in-out infinite' : 'none',
+              transition: 'all 0.2s',
+            }}
+          >
+            {isVideoOn ? '📹' : '📷'}
+          </button>
+
           <button
             onClick={handleLogout}
             style={{
@@ -304,6 +329,10 @@ function App() {
         @keyframes micPulse {
           0%, 100% { box-shadow: 0 0 0 4px rgba(16,185,129,0.15); }
           50% { box-shadow: 0 0 0 8px rgba(16,185,129,0.05); }
+        }
+        @keyframes videoPulse {
+          0%, 100% { box-shadow: 0 0 0 4px rgba(59,130,246,0.15); }
+          50% { box-shadow: 0 0 0 8px rgba(59,130,246,0.05); }
         }
       `}</style>
 
@@ -359,6 +388,8 @@ function App() {
               sendMoveInput={sendMoveInput}
               onEnterBuilding={handleSelectLab}
               speakingPeerIds={speakingPeerIds}
+              remoteVideoStreams={remoteVideoStreams}
+              myVideoStream={localVideoStream}
             />
 
             {/* Lab modal overlaid on campus */}
