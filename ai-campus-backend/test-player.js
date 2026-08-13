@@ -1,6 +1,6 @@
 const { io } = require('socket.io-client');
 
-const socket = io('http://localhost:4001');
+const socket = io(SOCKET_URL);
 
 socket.on('connect', () => {
   console.log('connected to realtime-server');

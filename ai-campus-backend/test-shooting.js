@@ -5,8 +5,8 @@ const shooterToken = process.argv[2];
 const targetToken = process.argv[3];
 const gameId = process.argv[4];
 
-const shooterSocket = io('http://localhost:4001');
-const targetSocket = io('http://localhost:4001');
+const shooterSocket = io(SOCKET_URL);
+const targetSocket = io(SOCKET_URL);
 
 let shotsFired = 0;
 const TOTAL_SHOTS = 5;

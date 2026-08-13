@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import MatchResults from './MatchResults';
+import { API_URL, SOCKET_URL } from './config';
 
 const FIRE_RATE_MS = 220; // ~4.5 shots per second while held down
 
@@ -39,7 +40,7 @@ function Battlefield({ token, gameId, onExit }) {
   }, [token]);
 
   useEffect(() => {
-    fetch(`http://localhost:4000/games/${gameId}`, {
+    fetch(`${API_URL}/games/${gameId}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
       .then((res) => res.json())
@@ -51,7 +52,7 @@ function Battlefield({ token, gameId, onExit }) {
   }, [gameId, token]);
 
   useEffect(() => {
-    const socket = io('http://localhost:4001');
+    const socket = io(SOCKET_URL);
     socketRef.current = socket;
 
     socket.on('connect', () => {
@@ -149,7 +150,7 @@ function Battlefield({ token, gameId, onExit }) {
     let foundTargetId = null;
 
     // Generous snap radius to assist with aiming on target players
-    const ASSIST_RADIUS = 95; 
+    const ASSIST_RADIUS = 95;
 
     players.forEach((p) => {
       if (p.userId === myUserId || p.hp <= 0) return;
@@ -210,7 +211,7 @@ function Battlefield({ token, gameId, onExit }) {
     if (!me) return;
 
     const angle = aimAngleRef.current;
-    
+
     // Find hit point: if locked, hit the enemy. Otherwise, project 1200px out.
     let targetX = me.x + Math.cos(angle) * 1200;
     let targetY = me.y + Math.sin(angle) * 1200;
@@ -440,7 +441,7 @@ function Battlefield({ token, gameId, onExit }) {
           }
         }
       `}</style>
-      
+
       {/* Top HUD bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '16px' }}>
         <button

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
+import { API_URL, SOCKET_URL } from './config';
 
 function CodingLab({ token, onEnterChallenge }) {
   const [challenges, setChallenges] = useState([]);
@@ -16,14 +17,14 @@ function CodingLab({ token, onEnterChallenge }) {
   const [joiningId, setJoiningId] = useState(null);
 
   const DIFFICULTY_COLORS = {
-    EASY:   { bg: 'rgba(16,185,129,0.12)', text: '#34d399', border: 'rgba(16,185,129,0.2)' },
+    EASY: { bg: 'rgba(16,185,129,0.12)', text: '#34d399', border: 'rgba(16,185,129,0.2)' },
     MEDIUM: { bg: 'rgba(245,158,11,0.12)', text: '#fbbf24', border: 'rgba(245,158,11,0.2)' },
-    HARD:   { bg: 'rgba(239,68,68,0.12)',  text: '#f87171', border: 'rgba(239,68,68,0.2)'  },
+    HARD: { bg: 'rgba(239,68,68,0.12)', text: '#f87171', border: 'rgba(239,68,68,0.2)' },
   };
 
   const loadChallenges = () => {
     setLoading(true);
-    fetch('http://localhost:4000/challenges')
+    fetch(`${API_URL}/challenges`)
       .then((res) => res.json())
       .then((data) => {
         setChallenges(data);
@@ -38,7 +39,7 @@ function CodingLab({ token, onEnterChallenge }) {
   useEffect(() => {
     loadChallenges();
 
-    const socket = io('http://localhost:4001');
+    const socket = io(SOCKET_URL);
     socket.on('challenge:created', (newChallenge) => {
       setChallenges((prev) => [newChallenge, ...prev]);
     });
@@ -52,7 +53,7 @@ function CodingLab({ token, onEnterChallenge }) {
     setError('');
 
     try {
-      const res = await fetch('http://localhost:4000/challenges', {
+      const res = await fetch(`${API_URL}/challenges`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -87,7 +88,7 @@ function CodingLab({ token, onEnterChallenge }) {
   const handleJoin = async (challengeId) => {
     setJoiningId(challengeId);
     setError('');
-    const res = await fetch(`http://localhost:4000/challenges/${challengeId}/join`, {
+    const res = await fetch(`${API_URL}/challenges/${challengeId}/join`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` }
     });

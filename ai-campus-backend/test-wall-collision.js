@@ -5,7 +5,7 @@ const token = process.argv[2];
 const gameId = process.argv[3];
 const isCreator = process.argv[4] === 'yes';
 
-const socket = io('http://localhost:4001');
+const socket = io(SOCKET_URL);
 
 socket.on('connect_error', (err) => {
   console.log('CONNECTION FAILED:', err.message);

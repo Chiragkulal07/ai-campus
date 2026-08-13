@@ -143,6 +143,7 @@ async function endBattle(gameId) {
         await User.findByIdAndUpdate(entry.userId, {
           $push: {
             gameHistory: {
+               matchId: gameId,
               matchName: match.name,
               kills: entry.kills,
               finalRank: rankIndex + 1,
@@ -426,6 +427,12 @@ io.on('connection', (socket) => {
       })),
       msRemaining: Math.max(0, battle.endsAt - Date.now())
     });
+  });
+
+  // A player turned their camera off — tell everyone else immediately, so
+  // their video tile clears right away instead of freezing on the last frame.
+  socket.on('voice:video-stopped', () => {
+    socket.broadcast.emit('voice:peer-video-stopped', { peerId: socket.id });
   });
 
   // Movement inside the battlefield — same "send intent, not position" rule as campus movement

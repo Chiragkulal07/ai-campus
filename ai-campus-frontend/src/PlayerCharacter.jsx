@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-function PlayerCharacter({ player, isMe, isSpeaking = false }) {
+function PlayerCharacter({ player, isMe, isSpeaking = false, videoStream = null }) {
   const [isMoving, setIsMoving] = useState(false);
   const [facingRight, setFacingRight] = useState(true);
   const prevPos = useRef({ x: player.x, y: player.y });
+  const videoRef = useRef(null);
 
   useEffect(() => {
     let dx = player.dx !== undefined ? player.dx : player.x - prevPos.current.x;
@@ -24,7 +25,16 @@ function PlayerCharacter({ player, isMe, isSpeaking = false }) {
     prevPos.current = { x: player.x, y: player.y };
   }, [player.x, player.y, player.dx, player.dy]);
 
+  // Attach the video stream to the <video> element whenever it changes —
+  // srcObject can't be set via a normal prop/attribute, has to be imperative.
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.srcObject = videoStream || null;
+    }
+  }, [videoStream]);
+
   const bodyColor = player.bodyColor || (isMe ? 'dodgerblue' : 'crimson');
+  const hasVideo = !!videoStream;
 
   return (
     <div style={{
@@ -36,6 +46,36 @@ function PlayerCharacter({ player, isMe, isSpeaking = false }) {
       transition: 'left 0.1s linear, top 0.1s linear',
       zIndex: player.y
     }}>
+      {/* Video tile — floats above the character when camera is on */}
+      {hasVideo && (
+        <div style={{
+          position: 'absolute',
+          bottom: '70px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '90px',
+          height: '68px',
+          borderRadius: '10px',
+          overflow: 'hidden',
+          border: '2px solid #3b82f6',
+          boxShadow: '0 0 14px rgba(59,130,246,0.6), 0 6px 16px rgba(0,0,0,0.5)',
+          background: '#0b121f'
+        }}>
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted={isMe} // mute your own preview to avoid hearing yourself echo
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              transform: isMe ? 'scaleX(-1)' : 'none' // mirror only your own camera, like a selfie view
+            }}
+          />
+        </div>
+      )}
+
       {/* Speaking ring — sits behind the character, pulses while voice is detected */}
       {isSpeaking && (
         <div style={{

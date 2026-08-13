@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { API_URL, SOCKET_URL } from './config';
 
 function Login({ onLoginSuccess }) {
   const [isSignup, setIsSignup] = useState(false);
@@ -17,7 +18,7 @@ function Login({ onLoginSuccess }) {
     const body = isSignup ? { email, password, displayName } : { email, password };
 
     try {
-      const res = await fetch(`http://localhost:4000/auth/${endpoint}`, {
+      const res = await fetch(`${API_URL}/auth/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -65,7 +66,7 @@ function Login({ onLoginSuccess }) {
       overflow: 'hidden',
       padding: '24px'
     }}>
-      
+
       {/* Global CSS animations */}
       <style>{`
         @keyframes float-slow {
@@ -126,7 +127,7 @@ function Login({ onLoginSuccess }) {
         position: 'relative',
         zIndex: 2
       }}>
-        
+
         {/* Left Side: Developer Info Console / HUD (Visible on screens larger than mobile) */}
         <div style={{
           flex: 1.1,
@@ -224,7 +225,7 @@ function Login({ onLoginSuccess }) {
           justifyContent: 'center',
           background: 'transparent'
         }}>
-          
+
           <div style={{ marginBottom: '32px' }}>
             <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#f8fafc', marginBottom: '6px', letterSpacing: '-0.5px' }}>
               {isSignup ? 'Initialize Account' : 'Uplink Terminal'}
@@ -235,7 +236,7 @@ function Login({ onLoginSuccess }) {
           </div>
 
           <form onSubmit={handleSubmit}>
-            
+
             {/* Input Wrapper (Email) */}
             <div style={{ position: 'relative' }}>
               <input

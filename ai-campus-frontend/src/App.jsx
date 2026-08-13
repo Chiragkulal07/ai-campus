@@ -11,6 +11,9 @@ import CampusWorld from './CampusWorld';
 import useVoiceChat from './Usevoicechat';
 import GamingLab from './GamingLab';
 import Battlefield from './Battlefield';
+import SummaryGrid from './SummaryGrid';
+import SummaryDetail from './SummaryDetail';
+import { API_URL, SOCKET_URL } from './config';
 
 const NAV_TABS = [
   { id: 'reception', label: '🏠 Reception' },
@@ -56,6 +59,9 @@ function App() {
   const [socketReady, setSocketReady] = useState(false);
   const socketRef = useRef(null);
   const heldKeys = useRef({ up: false, down: false, left: false, right: false });
+  const [summaryDetailType, setSummaryDetailType] = useState(null);
+  const [summaryDetailBuilding, setSummaryDetailBuilding] = useState(null);
+  const [summaryDetailLabel, setSummaryDetailLabel] = useState(null);
 
   // Voice + video chat hook — only becomes active once the socket is connected
   const {
@@ -67,15 +73,15 @@ function App() {
   } = useVoiceChat(socketReady ? socketRef.current : null);
 
   useEffect(() => {
-    fetch('http://localhost:4000/labs')
+    fetch(`${API_URL}/labs`)
       .then(res => res.ok ? res.json() : Promise.reject())
       .then(data => Array.isArray(data) && setLabs(data))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   useEffect(() => {
     if (!token) { setLoadingMe(false); return; }
-    fetch('http://localhost:4000/profile/me', { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${API_URL}/profile/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then(res => { if (!res.ok) throw new Error(); return res.json(); })
       .then(data => { setMe(data); setLoadingMe(false); })
       .catch(() => { localStorage.removeItem('token'); setToken(null); setMe(null); setLoadingMe(false); });
@@ -83,7 +89,7 @@ function App() {
 
   useEffect(() => {
     if (!me) return;
-    const socket = io('http://localhost:4001');
+    const socket = io(SOCKET_URL);
     socketRef.current = socket;
     socket.on('connect', () => {
       setMyPlayerId(socket.id);
@@ -164,6 +170,13 @@ function App() {
     setView('campus');
   };
 
+  const handleOpenSummaryDetail = (type, buildingId, label) => {
+    setSummaryDetailType(type);
+    setSummaryDetailBuilding(buildingId);
+    setSummaryDetailLabel(label);
+    setView('summarydetail');
+  };
+
   // ── Loading ──────────────────────────────
   if (loadingMe) return (
     <div style={{
@@ -223,7 +236,7 @@ function App() {
             fontSize: '16px',
           }}>🎓</div>
           <span style={{ fontWeight: 800, fontSize: '15px', color: '#f1f5f9', letterSpacing: '-0.3px' }}>
-           Robo Campus
+            Robo Campus
           </span>
         </div>
 
@@ -347,6 +360,32 @@ function App() {
               token={token}
               onEnterBuilding={handleEnterBuilding}
               onEnterChallenge={handleEnterChallenge}
+              onOpenSummary={() => setView('summary')}
+            />
+          </div>
+        )}
+
+        {/* Summary Grid */}
+        {/* Summary grid */}
+        {view === 'summary' && (
+          <div style={{ height: '100%', overflowY: 'auto' }}>
+            <SummaryGrid
+              token={token}
+              onOpenDetail={handleOpenSummaryDetail}
+              onBack={() => setView('reception')}
+            />
+          </div>
+        )}
+
+        {/* Summary detail */}
+        {view === 'summarydetail' && (
+          <div style={{ height: '100%', overflowY: 'auto' }}>
+            <SummaryDetail
+              token={token}
+              type={summaryDetailType}
+              buildingId={summaryDetailBuilding}
+              label={summaryDetailLabel}
+              onBack={() => setView('summary')}
             />
           </div>
         )}

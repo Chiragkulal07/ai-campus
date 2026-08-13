@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import PlayerCharacter from './PlayerCharacter';
 
-function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, onEnterBuilding, speakingPeerIds = [] }) {
+function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, onEnterBuilding, speakingPeerIds = [], remoteVideoStreams = {}, myVideoStream = null }) {
   const WORLD_WIDTH = 2400;
   const WORLD_HEIGHT = 1600;
 
@@ -57,7 +57,6 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
       height: '100vh',
       overflow: 'hidden',
       zIndex: 0,
-      // Premium futuristic deck background
       backgroundColor: '#0b121f',
       backgroundImage: `
         radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.08) 0%, transparent 80%),
@@ -126,6 +125,7 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
             player={p}
             isMe={p.id === myPlayerId}
             isSpeaking={speakingPeerIds.includes(p.id)}
+            videoStream={p.id === myPlayerId ? myVideoStream : remoteVideoStreams[p.id]}
           />
         ))}
       </div>

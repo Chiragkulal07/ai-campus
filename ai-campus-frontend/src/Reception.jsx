@@ -1,20 +1,21 @@
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
+import { API_URL, SOCKET_URL } from './config';
 
 const BUILDING_META = {
-  CODING_LAB:     { icon: '💻', accent: '#6366f1' },
+  CODING_LAB: { icon: '💻', accent: '#6366f1' },
   INTERVIEW_HALL: { icon: '🎤', accent: '#f59e0b' },
-  LIBRARY:        { icon: '📚', accent: '#10b981' },
-  EVENT_HALL:     { icon: '🎉', accent: '#ec4899' },
+  LIBRARY: { icon: '📚', accent: '#10b981' },
+  EVENT_HALL: { icon: '🎉', accent: '#ec4899' },
 };
 
 const DIFF_PILL = {
-  EASY:   { bg: 'rgba(16,185,129,0.12)', color: '#34d399', border: 'rgba(16,185,129,0.2)', label: 'Easy' },
+  EASY: { bg: 'rgba(16,185,129,0.12)', color: '#34d399', border: 'rgba(16,185,129,0.2)', label: 'Easy' },
   MEDIUM: { bg: 'rgba(245,158,11,0.12)', color: '#fbbf24', border: 'rgba(245,158,11,0.2)', label: 'Medium' },
-  HARD:   { bg: 'rgba(239,68,68,0.12)',  color: '#f87171', border: 'rgba(239,68,68,0.2)', label: 'Hard' },
+  HARD: { bg: 'rgba(239,68,68,0.12)', color: '#f87171', border: 'rgba(239,68,68,0.2)', label: 'Hard' },
 };
 
-function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
+function Reception({ me, token, onEnterBuilding, onEnterChallenge, onOpenSummary }) {
   const [challenges, setChallenges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -25,7 +26,7 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
 
   const load = () => {
     setLoading(true);
-    fetch('http://localhost:4000/challenges')
+    fetch(`${API_URL}/challenges`)
       .then(r => r.json())
       .then(data => { setChallenges(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => { setError('Could not reach server'); setLoading(false); });
@@ -33,7 +34,7 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
 
   useEffect(() => {
     load();
-    const socket = io('http://localhost:4001');
+    const socket = io(SOCKET_URL);
 
     socket.on('connect', () => {
       socket.emit('user:register', { token });
@@ -56,7 +57,7 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
   const handleJoin = async (challengeId) => {
     setJoiningId(challengeId);
     setError('');
-    const res = await fetch(`http://localhost:4000/challenges/${challengeId}/join`, {
+    const res = await fetch(`${API_URL}/challenges/${challengeId}/join`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -116,6 +117,16 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
               </span>
               <span style={{ color: '#64748b', fontSize: '12px', fontWeight: 500 }}>Correct Answers</span>
             </div>
+            <button
+              onClick={onOpenSummary}
+              style={{
+                background: 'rgba(99,102,241,0.12)', border: '1px solid rgba(99,102,241,0.3)',
+                borderRadius: '12px', padding: '9px 16px', color: '#a5b4fc',
+                fontWeight: 700, fontSize: '13px', cursor: 'pointer'
+              }}
+            >
+              📊 My Summary
+            </button>
 
             {justGained !== null && (
               <span style={{
@@ -169,7 +180,7 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
               display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px',
               boxShadow: `0 0 15px ${meta.accent}12`
             }}>{meta.icon}</div>
-            
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '15px', letterSpacing: '-0.3px' }}>
                 {id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
@@ -240,8 +251,8 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
               boxShadow: '0 4px 15px rgba(0,0,0,0.15)',
               transition: 'border-color 0.2s'
             }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'}
-            onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'}
+              onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: 0 }}>
                 <span style={{ fontSize: '24px', background: 'rgba(255,255,255,0.02)', padding: '8px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>{meta.icon}</span>
@@ -268,8 +279,8 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge }) {
                   boxShadow: isFull ? 'none' : '0 4px 15px rgba(16,185,129,0.3)',
                   transition: 'all 0.15s'
                 }}
-                onMouseEnter={e => { if(!isFull && joiningId !== c.id) e.currentTarget.style.transform = 'scale(1.02)'; }}
-                onMouseLeave={e => { if(!isFull && joiningId !== c.id) e.currentTarget.style.transform = 'scale(1)'; }}
+                onMouseEnter={e => { if (!isFull && joiningId !== c.id) e.currentTarget.style.transform = 'scale(1.02)'; }}
+                onMouseLeave={e => { if (!isFull && joiningId !== c.id) e.currentTarget.style.transform = 'scale(1)'; }}
               >
                 {joiningId === c.id ? '...' : isFull ? 'Full' : 'Join Match'}
               </button>

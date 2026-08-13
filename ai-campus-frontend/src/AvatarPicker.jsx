@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { API_URL, SOCKET_URL } from './config';
 
 const COLORS = [
   { value: 'dodgerblue', label: 'Blue' },
@@ -16,7 +17,7 @@ function AvatarPicker({ token, currentColor, onUpdated }) {
   const handlePick = async (color) => {
     setSelected(color);
     setSaving(true);
-    const res = await fetch('http://localhost:4000/profile/avatar', {
+    const res = await fetch(`${API_URL}/profile/avatar`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ bodyColor: color }),

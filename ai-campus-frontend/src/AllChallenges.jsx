@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
+import { API_URL, SOCKET_URL } from './config';
 
 const BUILDING_META = {
-  CODING_LAB:     { icon: '💻', name: 'Coding Lab',     accent: '#6366f1' },
+  CODING_LAB: { icon: '💻', name: 'Coding Lab', accent: '#6366f1' },
   INTERVIEW_HALL: { icon: '🎤', name: 'Interview Hall', accent: '#f59e0b' },
-  LIBRARY:        { icon: '📚', name: 'Library',        accent: '#10b981' },
-  EVENT_HALL:     { icon: '🎉', name: 'Event Hall',     accent: '#ec4899' },
+  LIBRARY: { icon: '📚', name: 'Library', accent: '#10b981' },
+  EVENT_HALL: { icon: '🎉', name: 'Event Hall', accent: '#ec4899' },
 };
 
 const DIFF_PILL = {
-  EASY:   { bg: 'rgba(16,185,129,0.12)',  color: '#34d399', border: 'rgba(16,185,129,0.2)',  label: 'Easy'   },
-  MEDIUM: { bg: 'rgba(245,158,11,0.12)',  color: '#fbbf24', border: 'rgba(245,158,11,0.2)',  label: 'Medium' },
-  HARD:   { bg: 'rgba(239,68,68,0.12)',   color: '#f87171', border: 'rgba(239,68,68,0.2)',   label: 'Hard'   },
+  EASY: { bg: 'rgba(16,185,129,0.12)', color: '#34d399', border: 'rgba(16,185,129,0.2)', label: 'Easy' },
+  MEDIUM: { bg: 'rgba(245,158,11,0.12)', color: '#fbbf24', border: 'rgba(245,158,11,0.2)', label: 'Medium' },
+  HARD: { bg: 'rgba(239,68,68,0.12)', color: '#f87171', border: 'rgba(239,68,68,0.2)', label: 'Hard' },
 };
 
 function AllChallenges({ token, onEnterChallenge }) {
@@ -22,7 +23,7 @@ function AllChallenges({ token, onEnterChallenge }) {
 
   const load = () => {
     setLoading(true);
-    fetch('http://localhost:4000/challenges')
+    fetch(`${API_URL}/challenges`)
       .then(r => r.json())
       .then(data => { setChallenges(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => { setError('Could not load challenges'); setLoading(false); });
@@ -30,7 +31,7 @@ function AllChallenges({ token, onEnterChallenge }) {
 
   useEffect(() => {
     load();
-    const socket = io('http://localhost:4001');
+    const socket = io(SOCKET_URL);
     socket.on('challenge:created', (c) => setChallenges(prev => [c, ...prev]));
     return () => socket.disconnect();
   }, []);
@@ -38,7 +39,7 @@ function AllChallenges({ token, onEnterChallenge }) {
   const handleJoin = async (challengeId) => {
     setJoiningId(challengeId);
     setError('');
-    const res = await fetch(`http://localhost:4000/challenges/${challengeId}/join`, {
+    const res = await fetch(`${API_URL}/challenges/${challengeId}/join`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     });

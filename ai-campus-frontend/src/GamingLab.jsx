@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
+import { API_URL, SOCKET_URL } from './config';
 
 function GamingLab({ token, onEnterBattlefield }) {
   const [games, setGames] = useState([]);
@@ -15,7 +16,7 @@ function GamingLab({ token, onEnterBattlefield }) {
 
   const loadGames = () => {
     setLoading(true);
-    fetch('http://localhost:4000/games')
+    fetch(`${API_URL}/games`)
       .then((res) => res.json())
       .then((data) => {
         setGames(data);
@@ -30,7 +31,7 @@ function GamingLab({ token, onEnterBattlefield }) {
   useEffect(() => {
     loadGames();
 
-    const socket = io('http://localhost:4001');
+    const socket = io(SOCKET_URL);
     socket.on('game:created', (newGame) => {
       setGames((prev) => [newGame, ...prev]);
     });
@@ -44,7 +45,7 @@ function GamingLab({ token, onEnterBattlefield }) {
     setError('');
 
     try {
-      const res = await fetch('http://localhost:4000/games', {
+      const res = await fetch(`${API_URL}/games`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -77,7 +78,7 @@ function GamingLab({ token, onEnterBattlefield }) {
   const handleJoin = async (gameId) => {
     setJoiningId(gameId);
     setError('');
-    const res = await fetch(`http://localhost:4000/games/${gameId}/join`, {
+    const res = await fetch(`${API_URL}/games/${gameId}/join`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` }
     });

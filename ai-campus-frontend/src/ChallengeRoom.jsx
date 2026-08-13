@@ -21,7 +21,7 @@ function ChallengeRoom({ token, myUserId, challengeId, onExit }) {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    const socket = io('http://localhost:4001');
+    const socket = io(SOCKET_URL);
     socketRef.current = socket;
 
     socket.on('connect', () => {

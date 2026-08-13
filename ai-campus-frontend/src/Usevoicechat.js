@@ -320,16 +320,25 @@ export default function useVoiceChat(socket) {
       closePeerConnection(peerId);
     };
 
+    // A peer told us directly their video stopped — clear their tile immediately,
+    // don't rely on WebRTC's own track-ended propagation, which is inconsistent
+    // across browsers/timing and is exactly what left stale frozen tiles before.
+    const handlePeerVideoStopped = ({ peerId }) => {
+      clearRemoteVideo(peerId);
+    };
+
     socket.on('voice:existing-participants', handleExistingParticipants);
     socket.on('voice:peer-joined', handlePeerJoined);
     socket.on('voice:signal', handleSignal);
     socket.on('voice:peer-left', handlePeerLeft);
+    socket.on('voice:peer-video-stopped', handlePeerVideoStopped);
 
     return () => {
       socket.off('voice:existing-participants', handleExistingParticipants);
       socket.off('voice:peer-joined', handlePeerJoined);
       socket.off('voice:signal', handleSignal);
       socket.off('voice:peer-left', handlePeerLeft);
+      socket.off('voice:peer-video-stopped', handlePeerVideoStopped);
     };
   }, [socket, createPeerConnection]);
 
@@ -379,7 +388,9 @@ export default function useVoiceChat(socket) {
   };
 
   // ── Video toggle — fully stops the camera track when off, not just muted,
-  // since people expect the camera's hardware light to actually turn off. ──
+  // since people expect the camera's hardware light to actually turn off.
+  // Also explicitly notifies every peer so their tile clears immediately
+  // instead of freezing on the last frame. ──
   const toggleVideo = async () => {
     if (!socket) return;
     setVideoError(null);
@@ -396,6 +407,7 @@ export default function useVoiceChat(socket) {
           pair.video.direction = 'recvonly';
         }
       });
+      socket.emit('voice:video-stopped');
       setIsVideoOn(false);
       return;
     }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
+import { API_URL, SOCKET_URL } from './config';
 
 const LAB_ICONS = {
   CODING_LAB: '💻',
@@ -32,7 +33,7 @@ function Lab({ token, buildingId, buildingName, categoryOptions, onEnterChalleng
 
   const loadChallenges = () => {
     setLoading(true);
-    fetch(`http://localhost:4000/challenges?building=${buildingId}`)
+    fetch(`${API_URL}/challenges?building=${buildingId}`)
       .then((res) => res.json())
       .then((data) => {
         setChallenges(Array.isArray(data) ? data : []);
@@ -46,7 +47,7 @@ function Lab({ token, buildingId, buildingName, categoryOptions, onEnterChalleng
 
   useEffect(() => {
     loadChallenges();
-    const socket = io('http://localhost:4001');
+    const socket = io(SOCKET_URL);
     socket.on('challenge:created', (newChallenge) => {
       if (newChallenge.building === buildingId) {
         setChallenges((prev) => [newChallenge, ...prev]);
@@ -62,7 +63,7 @@ function Lab({ token, buildingId, buildingName, categoryOptions, onEnterChalleng
     setError('');
 
     try {
-      const res = await fetch('http://localhost:4000/challenges', {
+      const res = await fetch(`${API_URL}/challenges`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -95,7 +96,7 @@ function Lab({ token, buildingId, buildingName, categoryOptions, onEnterChalleng
   const handleJoin = async (challengeId) => {
     setJoiningId(challengeId);
     setError('');
-    const res = await fetch(`http://localhost:4000/challenges/${challengeId}/join`, {
+    const res = await fetch(`${API_URL}/challenges/${challengeId}/join`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -408,8 +409,8 @@ function Lab({ token, buildingId, buildingName, categoryOptions, onEnterChalleng
                       boxShadow: isFull ? 'none' : '0 4px 15px rgba(16,185,129,0.3)',
                       transition: 'all 0.15s'
                     }}
-                    onMouseEnter={e => { if(!isFull && joiningId !== c.id) e.currentTarget.style.transform = 'scale(1.02)'; }}
-                    onMouseLeave={e => { if(!isFull && joiningId !== c.id) e.currentTarget.style.transform = 'scale(1)'; }}
+                    onMouseEnter={e => { if (!isFull && joiningId !== c.id) e.currentTarget.style.transform = 'scale(1.02)'; }}
+                    onMouseLeave={e => { if (!isFull && joiningId !== c.id) e.currentTarget.style.transform = 'scale(1)'; }}
                   >
                     {joiningId === c.id ? '...' : isFull ? 'Full' : 'Join Match'}
                   </button>
