@@ -1,39 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Global voice + video chat over a mesh of WebRTC peer connections.
-//
-// Joining the mesh (so you can HEAR/SEE others) and enabling your own
-// mic/camera (so others can hear/see YOU) are separate things. Everyone
-// auto-joins the mesh silently on connect — the mic and video buttons
-// each independently control only your own outgoing track.
-//
-// ── Production notes ──
-// 1. STUN alone is NOT enough once real users are on different networks/
-//    behind restrictive NATs. You need a TURN server or calls will fail
-//    to connect silently. Configure via:
-//      VITE_TURN_URL / VITE_TURN_USERNAME / VITE_TURN_CREDENTIAL
-// 2. Video is bandwidth-heavier than audio — this mesh approach (everyone
-//    connects to everyone) is fine for small groups. If you later scale to
-//    many simultaneous video broadcasters, that's when an SFU (planned
-//    separately) becomes necessary — noted, not needed yet.
 export default function useVoiceChat(socket) {
   const [isMicOn, setIsMicOn] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(false);
   const [speakingPeerIds, setSpeakingPeerIds] = useState([]);
   const [micError, setMicError] = useState(null);
   const [videoError, setVideoError] = useState(null);
-  const [remoteVideoStreams, setRemoteVideoStreams] = useState({}); // { peerId: MediaStream }
+  const [remoteVideoStreams, setRemoteVideoStreams] = useState({});
 
   const localAudioStreamRef = useRef(null);
   const localVideoStreamRef = useRef(null);
-  const peerConnectionsRef = useRef(new Map());     // peerId -> RTCPeerConnection
-  const transceiversRef = useRef(new Map());          // peerId -> { audio, video }
-  const audioElementsRef = useRef(new Map());          // peerId -> hidden <audio>
-  const analysersRef = useRef(new Map());               // peerId -> { rafId, audioCtx }
-  const pendingPlayRef = useRef(new Set());               // audio elements blocked by autoplay policy
+  const peerConnectionsRef = useRef(new Map());
+  const transceiversRef = useRef(new Map());
+  const audioElementsRef = useRef(new Map());
+  const analysersRef = useRef(new Map());
+  const pendingPlayRef = useRef(new Set());
 
-  const politeRef = useRef(new Map());       // peerId -> boolean
-  const makingOfferRef = useRef(new Map());   // peerId -> boolean
+  const politeRef = useRef(new Map());
+  const makingOfferRef = useRef(new Map());
 
   const getIceServers = () => {
     const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
@@ -44,40 +29,47 @@ export default function useVoiceChat(socket) {
     if (turnUrl && turnUsername && turnCredential) {
       servers.push({ urls: turnUrl, username: turnUsername, credential: turnCredential });
     } else if (import.meta.env?.PROD) {
-      console.warn(
-        '[voiceChat] No TURN server configured. Calls between users on ' +
-        'different networks/behind restrictive NATs will likely fail to connect.'
-      );
+      console.warn('[voiceChat] No TURN server configured. Calls across restrictive NATs may fail.');
     }
     return servers;
   };
 
-  // ── Unlock blocked audio elements on the first real user gesture ──
+  // ── Force-retry any blocked audio elements — used both by the generic
+  // document-wide listener below, AND explicitly inside the mic button
+  // click itself, since that click is a guaranteed real user gesture. ──
+  const unlockPendingAudio = () => {
+    pendingPlayRef.current.forEach((audioEl) => {
+      audioEl.play()
+        .then(() => {
+          console.log('[voiceChat] pending audio unlocked for', audioEl.dataset.peerId);
+          pendingPlayRef.current.delete(audioEl);
+        })
+        .catch((err) => {
+          console.warn('[voiceChat] still blocked for', audioEl.dataset.peerId, err.message);
+        });
+    });
+  };
+
   useEffect(() => {
-    const tryUnlock = () => {
-      pendingPlayRef.current.forEach((audioEl) => {
-        audioEl.play()
-          .then(() => pendingPlayRef.current.delete(audioEl))
-          .catch(() => {});
-      });
-    };
-    document.addEventListener('click', tryUnlock);
-    document.addEventListener('keydown', tryUnlock);
-    document.addEventListener('touchstart', tryUnlock);
+    document.addEventListener('click', unlockPendingAudio);
+    document.addEventListener('keydown', unlockPendingAudio);
+    document.addEventListener('touchstart', unlockPendingAudio);
     return () => {
-      document.removeEventListener('click', tryUnlock);
-      document.removeEventListener('keydown', tryUnlock);
-      document.removeEventListener('touchstart', tryUnlock);
+      document.removeEventListener('click', unlockPendingAudio);
+      document.removeEventListener('keydown', unlockPendingAudio);
+      document.removeEventListener('touchstart', unlockPendingAudio);
     };
   }, []);
 
-  const playAudioElement = (audioEl) => {
+  const playAudioElement = (audioEl, peerId) => {
     const playPromise = audioEl.play();
     if (playPromise && typeof playPromise.catch === 'function') {
-      playPromise.catch((err) => {
-        console.warn('autoplay blocked, will retry on next user interaction:', err.message);
-        pendingPlayRef.current.add(audioEl);
-      });
+      playPromise
+        .then(() => console.log('[voiceChat] audio playing for', peerId))
+        .catch((err) => {
+          console.warn('[voiceChat] autoplay BLOCKED for', peerId, '-', err.message, '- will retry on next click');
+          pendingPlayRef.current.add(audioEl);
+        });
     }
   };
 
@@ -99,6 +91,14 @@ export default function useVoiceChat(socket) {
 
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      // Some browsers create AudioContext in a "suspended" state until a
+      // user gesture explicitly resumes it — this doesn't block the
+      // separate <audio> element's playback, but does block the speaking-
+      // detection analyser, so we resume it defensively here too.
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
+
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 512;
@@ -125,7 +125,7 @@ export default function useVoiceChat(socket) {
       analysersRef.current.set(peerId, { rafId: null, audioCtx });
       check();
     } catch (err) {
-      console.warn('volume watch failed for', peerId, err);
+      console.warn('[voiceChat] volume watch failed for', peerId, err);
     }
   };
 
@@ -138,10 +138,6 @@ export default function useVoiceChat(socket) {
     });
   };
 
-  // Creates a peer connection with BOTH an audio and a video transceiver.
-  // Each starts recvonly unless we already have that specific local track —
-  // audio and video are upgraded to sendrecv independently, whenever the
-  // corresponding toggle is turned on.
   const createPeerConnection = useCallback((peerId) => {
     const pc = new RTCPeerConnection({ iceServers: getIceServers() });
 
@@ -174,7 +170,7 @@ export default function useVoiceChat(socket) {
         await pc.setLocalDescription(offer);
         socket.emit('voice:signal', { to: peerId, data: { sdp: pc.localDescription } });
       } catch (err) {
-        console.warn('negotiation failed for', peerId, err);
+        console.warn('[voiceChat] negotiation failed for', peerId, err);
       } finally {
         makingOfferRef.current.set(peerId, false);
       }
@@ -187,13 +183,15 @@ export default function useVoiceChat(socket) {
     };
 
     pc.oniceconnectionstatechange = () => {
+      console.log('[voiceChat] ICE state for', peerId, '->', pc.iceConnectionState);
       if (['failed', 'disconnected'].includes(pc.iceConnectionState)) {
-        console.warn(`ICE ${pc.iceConnectionState} for peer`, peerId, '- check TURN server config if this persists across networks');
+        console.warn(`[voiceChat] ICE ${pc.iceConnectionState} for peer`, peerId);
       }
     };
 
     pc.ontrack = (event) => {
       const remoteStream = event.streams[0] || new MediaStream([event.track]);
+      console.log('[voiceChat] ontrack fired — kind:', event.track.kind, 'from peer:', peerId);
 
       if (event.track.kind === 'audio') {
         let audioEl = audioElementsRef.current.get(peerId);
@@ -206,7 +204,7 @@ export default function useVoiceChat(socket) {
           audioElementsRef.current.set(peerId, audioEl);
         }
         audioEl.srcObject = remoteStream;
-        playAudioElement(audioEl);
+        playAudioElement(audioEl, peerId);
         watchVolume(peerId, remoteStream);
         event.track.addEventListener('ended', () => stopWatchingVolume(peerId));
       } else if (event.track.kind === 'video') {
@@ -240,7 +238,6 @@ export default function useVoiceChat(socket) {
     clearRemoteVideo(peerId);
   };
 
-  // ── Auto-join the mesh the moment we have a connected socket ──
   useEffect(() => {
     if (!socket) return;
     socket.emit('voice:join');
@@ -266,7 +263,6 @@ export default function useVoiceChat(socket) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
 
-  // ── Signaling handlers ──
   useEffect(() => {
     if (!socket) return;
 
@@ -278,9 +274,7 @@ export default function useVoiceChat(socket) {
       });
     };
 
-    const handlePeerJoined = () => {
-      // no-op — we wait for their offer
-    };
+    const handlePeerJoined = () => {};
 
     const handleSignal = async ({ from, data }) => {
       let pc = peerConnectionsRef.current.get(from);
@@ -305,7 +299,7 @@ export default function useVoiceChat(socket) {
             socket.emit('voice:signal', { to: from, data: { sdp: pc.localDescription } });
           }
         } catch (err) {
-          console.warn('failed handling sdp from', from, err);
+          console.warn('[voiceChat] failed handling sdp from', from, err);
         }
       } else if (data.candidate) {
         try {
@@ -316,16 +310,8 @@ export default function useVoiceChat(socket) {
       }
     };
 
-    const handlePeerLeft = ({ peerId }) => {
-      closePeerConnection(peerId);
-    };
-
-    // A peer told us directly their video stopped — clear their tile immediately,
-    // don't rely on WebRTC's own track-ended propagation, which is inconsistent
-    // across browsers/timing and is exactly what left stale frozen tiles before.
-    const handlePeerVideoStopped = ({ peerId }) => {
-      clearRemoteVideo(peerId);
-    };
+    const handlePeerLeft = ({ peerId }) => closePeerConnection(peerId);
+    const handlePeerVideoStopped = ({ peerId }) => clearRemoteVideo(peerId);
 
     socket.on('voice:existing-participants', handleExistingParticipants);
     socket.on('voice:peer-joined', handlePeerJoined);
@@ -342,10 +328,14 @@ export default function useVoiceChat(socket) {
     };
   }, [socket, createPeerConnection]);
 
-  // ── Mic toggle — soft mute, keeps the same track alive ──
   const toggleMic = async () => {
     if (!socket) return;
     setMicError(null);
+
+    // This click is a guaranteed real user gesture — use it to force-retry
+    // any audio elements that got blocked earlier, right now, not waiting
+    // for the generic document-wide listener to catch up.
+    unlockPendingAudio();
 
     if (isMicOn) {
       if (localAudioStreamRef.current) {
@@ -357,7 +347,9 @@ export default function useVoiceChat(socket) {
 
     if (!localAudioStreamRef.current) {
       try {
+        console.log('[voiceChat] requesting microphone permission...');
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log('[voiceChat] microphone permission GRANTED, tracks:', stream.getAudioTracks().length);
         localAudioStreamRef.current = stream;
         const track = stream.getAudioTracks()[0];
 
@@ -367,12 +359,13 @@ export default function useVoiceChat(socket) {
             pair.audio.sender.replaceTrack(track);
             if (pair.audio.sender.setStreams) pair.audio.sender.setStreams(stream);
             pair.audio.direction = 'sendrecv';
+            console.log('[voiceChat] upgraded audio transceiver to sendrecv for', peerId);
           } else {
             pc.addTrack(track, stream);
           }
         });
       } catch (err) {
-        console.error('microphone permission denied or unavailable:', err);
+        console.error('[voiceChat] microphone permission FAILED:', err.name, err.message);
         setMicError(
           err.name === 'NotAllowedError'
             ? 'Microphone access was denied. Check your browser permissions.'
@@ -387,10 +380,6 @@ export default function useVoiceChat(socket) {
     setIsMicOn(true);
   };
 
-  // ── Video toggle — fully stops the camera track when off, not just muted,
-  // since people expect the camera's hardware light to actually turn off.
-  // Also explicitly notifies every peer so their tile clears immediately
-  // instead of freezing on the last frame. ──
   const toggleVideo = async () => {
     if (!socket) return;
     setVideoError(null);
@@ -430,7 +419,7 @@ export default function useVoiceChat(socket) {
 
       setIsVideoOn(true);
     } catch (err) {
-      console.error('camera permission denied or unavailable:', err);
+      console.error('[voiceChat] camera permission failed:', err.message);
       setVideoError(
         err.name === 'NotAllowedError'
           ? 'Camera access was denied. Check your browser permissions.'
@@ -440,14 +429,9 @@ export default function useVoiceChat(socket) {
   };
 
   return {
-    isMicOn,
-    toggleMic,
-    micError,
-    isVideoOn,
-    toggleVideo,
-    videoError,
-    speakingPeerIds,
-    remoteVideoStreams,     // { peerId: MediaStream } — for rendering <video> tiles
-    localVideoStream: localVideoStreamRef.current, // your own camera preview, if you want one
+    isMicOn, toggleMic, micError,
+    isVideoOn, toggleVideo, videoError,
+    speakingPeerIds, remoteVideoStreams,
+    localVideoStream: localVideoStreamRef.current,
   };
 }
