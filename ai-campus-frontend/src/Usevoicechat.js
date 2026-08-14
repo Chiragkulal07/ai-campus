@@ -21,18 +21,22 @@ export default function useVoiceChat(socket) {
   const makingOfferRef = useRef(new Map());
 
   const getIceServers = () => {
-    const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
-    const turnUrl = import.meta.env?.VITE_TURN_URL;
-    const turnUsername = import.meta.env?.VITE_TURN_USERNAME;
-    const turnCredential = import.meta.env?.VITE_TURN_CREDENTIAL;
+  const servers = [{ urls: 'stun:stun.l.google.com:19302' }];
+  const turnUrl = import.meta.env?.VITE_TURN_URL;
+  const turnUsername = import.meta.env?.VITE_TURN_USERNAME;
+  const turnCredential = import.meta.env?.VITE_TURN_CREDENTIAL;
 
-    if (turnUrl && turnUsername && turnCredential) {
-      servers.push({ urls: turnUrl, username: turnUsername, credential: turnCredential });
-    } else if (import.meta.env?.PROD) {
-      console.warn('[voiceChat] No TURN server configured. Calls across restrictive NATs may fail.');
-    }
-    return servers;
-  };
+  if (turnUrl && turnUsername && turnCredential) {
+    // Support multiple comma-separated TURN URLs (UDP/TCP/TLS variants)
+    const urls = turnUrl.includes(',')
+      ? turnUrl.split(',').map((u) => u.trim())
+      : turnUrl;
+    servers.push({ urls, username: turnUsername, credential: turnCredential });
+  } else if (import.meta.env?.PROD) {
+    console.warn('[voiceChat] No TURN server configured. Calls across restrictive NATs may fail.');
+  }
+  return servers;
+};
 
   // ── Force-retry any blocked audio elements — used both by the generic
   // document-wide listener below, AND explicitly inside the mic button
