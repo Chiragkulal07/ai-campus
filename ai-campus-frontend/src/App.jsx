@@ -76,7 +76,12 @@ function App() {
   useEffect(() => {
     fetch(`${API_URL}/labs`)
       .then(res => res.ok ? res.json() : Promise.reject())
-      .then(data => Array.isArray(data) && setLabs(data))
+      .then(data => {
+        if (Array.isArray(data)) {
+          // Filter to only display Interview Hall
+          setLabs(data.filter(lab => lab.id === 'INTERVIEW_HALL'));
+        }
+      })
       .catch(() => { });
   }, []);
 
@@ -469,6 +474,7 @@ function App() {
             <AllChallenges
               token={token}
               onEnterChallenge={handleEnterChallenge}
+              onEnterBattlefield={handleEnterBattlefield}
             />
           </div>
         )}

@@ -94,29 +94,38 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
         {/* Gaming Lab Center Building */}
         <Building
           id="gaminglab"
-          x={1200}
-          y={800}
+          x={800}
+          y={600}
           name="Gaming Lab"
           color="#3b82f6"
           playerX={myPlayer.x}
           playerY={myPlayer.y}
           onEnter={onEnterBuilding}
+          emoji="🕹️"
         />
 
         {/* Buildings dynamically generated from backend labs list */}
-        {labs.map(lab => (
-          <Building
-            key={lab.id}
-            id={lab.id}
-            x={lab.mapConfig.x}
-            y={lab.mapConfig.y}
-            name={lab.name}
-            color={lab.mapConfig.color}
-            playerX={myPlayer.x}
-            playerY={myPlayer.y}
-            onEnter={onEnterBuilding}
-          />
-        ))}
+        {labs.map(lab => {
+          const isInterview = lab.id === 'INTERVIEW_HALL';
+          const xVal = lab.mapConfig?.x ?? 800;
+          const yVal = lab.mapConfig?.y ?? 300;
+          const colorVal = isInterview ? '#f59e0b' : (lab.mapConfig?.color ?? '#8b5cf6');
+          const emojiVal = isInterview ? '🎤' : '🏛️';
+          return (
+            <Building
+              key={lab.id}
+              id={lab.id}
+              x={xVal}
+              y={yVal}
+              name={lab.name}
+              color={colorVal}
+              playerX={myPlayer.x}
+              playerY={myPlayer.y}
+              onEnter={onEnterBuilding}
+              emoji={emojiVal}
+            />
+          );
+        })}
 
         {/* Players */}
         {players.map((p) => (
@@ -164,7 +173,7 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
   );
 }
 
-function Building({ id, x, y, name, color, playerX, playerY, onEnter }) {
+function Building({ id, x, y, name, color, playerX, playerY, onEnter, emoji }) {
   const distance = Math.hypot(x - playerX, y - playerY);
   const isNear = distance < 160;
 
@@ -225,7 +234,7 @@ function Building({ id, x, y, name, color, playerX, playerY, onEnter }) {
       <div style={{
         position: 'relative',
         width: '210px',
-        height: '120px',
+        height: '140px',
         background: 'rgba(15, 23, 42, 0.65)',
         backdropFilter: 'blur(12px)',
         border: `2px solid ${color}`,
@@ -235,7 +244,7 @@ function Building({ id, x, y, name, color, playerX, playerY, onEnter }) {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: '10px',
+        gap: '6px',
         padding: '16px'
       }}>
         {/* Floating Holo-ring at the top */}
@@ -249,6 +258,16 @@ function Building({ id, x, y, name, color, playerX, playerY, onEnter }) {
           boxShadow: `0 0 15px ${color}, 0 0 5px ${color}`,
           opacity: 0.8
         }} />
+
+        {emoji && (
+          <div style={{
+            fontSize: '28px',
+            marginBottom: '2px',
+            filter: `drop-shadow(0 0 8px ${color}aa)`
+          }}>
+            {emoji}
+          </div>
+        )}
 
         <div style={{
           fontSize: '11px',
