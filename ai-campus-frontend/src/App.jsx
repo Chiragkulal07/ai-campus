@@ -186,13 +186,38 @@ function App() {
   // ── Loading ──────────────────────────────
   if (loadingMe) return (
     <div style={{
-      height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: '#080c14', fontFamily: "'Inter', sans-serif",
+      height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      background: '#060a12',
+      backgroundImage: 'radial-gradient(ellipse at 30% 20%, rgba(99,102,241,0.08) 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, rgba(139,92,246,0.06) 0%, transparent 60%)',
     }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: '40px', marginBottom: '16px', animation: 'spin 1s linear infinite' }}>⚙️</div>
-        <p style={{ color: '#64748b', fontSize: '14px' }}>Loading campus...</p>
+      <div style={{ textAlign: 'center', animation: 'fadeIn 0.5s ease' }}>
+        <div style={{
+          width: '64px', height: '64px', borderRadius: '20px',
+          background: 'linear-gradient(135deg, #4f46e5, #8b5cf6)',
+          boxShadow: '0 0 40px rgba(99,102,241,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '28px', marginBottom: '24px', margin: '0 auto 24px',
+          animation: 'float 2s ease-in-out infinite',
+        }}>🎓</div>
+        <div style={{
+          width: '200px', height: '3px', background: 'rgba(255,255,255,0.06)',
+          borderRadius: '2px', overflow: 'hidden', margin: '0 auto 16px',
+        }}>
+          <div style={{
+            height: '100%', width: '60%',
+            background: 'linear-gradient(90deg, #6366f1, #8b5cf6)',
+            borderRadius: '2px',
+            animation: 'shimmer 1.5s ease-in-out infinite',
+            backgroundSize: '200% 100%',
+          }} />
+        </div>
+        <p style={{ color: '#475569', fontSize: '13px', fontWeight: 500, letterSpacing: '0.5px' }}>Initializing campus…</p>
       </div>
+      <style>{`
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+      `}</style>
     </div>
   );
 
@@ -223,88 +248,114 @@ function App() {
   return (
     <div style={{
       height: '100vh', display: 'flex', flexDirection: 'column',
-      background: '#080c14', fontFamily: "'Inter', sans-serif", overflow: 'hidden',
+      background: '#060a12', overflow: 'hidden',
     }}>
       {/* Top Navigation Bar */}
       <header style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 24px', height: '56px', flexShrink: 0,
-        borderBottom: '1px solid rgba(255,255,255,0.07)',
-        background: 'rgba(8,12,20,0.95)', backdropFilter: 'blur(10px)',
+        padding: '0 20px', height: '60px', flexShrink: 0,
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        background: 'rgba(6,10,18,0.97)', backdropFilter: 'blur(20px)',
         position: 'relative', zIndex: 50,
+        boxShadow: '0 1px 0 rgba(255,255,255,0.04), 0 4px 20px rgba(0,0,0,0.3)',
       }}>
+        {/* Subtle top gradient line */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: '1px',
+          background: 'linear-gradient(90deg, transparent, rgba(99,102,241,0.5), rgba(139,92,246,0.5), transparent)',
+        }} />
+
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
-            width: '32px', height: '32px', borderRadius: '10px',
-            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            width: '34px', height: '34px', borderRadius: '10px',
+            background: 'linear-gradient(135deg, #4f46e5, #8b5cf6)',
+            boxShadow: '0 0 16px rgba(99,102,241,0.4)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '16px',
+            fontSize: '17px', flexShrink: 0,
           }}>🎓</div>
           <span style={{ fontWeight: 800, fontSize: '15px', color: '#f1f5f9', letterSpacing: '-0.3px' }}>
-            Robo Campus
+            Robo<span style={{ color: '#818cf8' }}>Campus</span>
           </span>
         </div>
 
         {/* Nav tabs */}
-        <nav style={{ display: 'flex', gap: '4px' }}>
-          {NAV_TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                if (!['campus', 'lab'].includes(tab.id)) {
-                  setActiveBuildingId(null);
-                  setActiveBuildingName(null);
-                }
-                setView(tab.id);
-              }}
-              style={{
-                padding: '6px 14px', borderRadius: '8px', border: 'none',
-                background: (view === tab.id || (tab.id === 'campus' && isOnCampus))
-                  ? 'rgba(99,102,241,0.2)' : 'transparent',
-                color: (view === tab.id || (tab.id === 'campus' && isOnCampus))
-                  ? '#a5b4fc' : '#64748b',
-                fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-                transition: 'all 0.15s',
-                outline: (view === tab.id || (tab.id === 'campus' && isOnCampus))
-                  ? '1px solid rgba(99,102,241,0.35)' : '1px solid transparent',
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <nav style={{ display: 'flex', gap: '2px', background: 'rgba(255,255,255,0.03)', padding: '4px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+          {NAV_TABS.map(tab => {
+            const isActive = view === tab.id || (tab.id === 'campus' && isOnCampus);
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  if (!['campus', 'lab'].includes(tab.id)) {
+                    setActiveBuildingId(null);
+                    setActiveBuildingName(null);
+                  }
+                  setView(tab.id);
+                }}
+                style={{
+                  padding: '6px 14px', borderRadius: '9px', border: 'none',
+                  background: isActive ? 'rgba(99,102,241,0.18)' : 'transparent',
+                  color: isActive ? '#a5b4fc' : '#4b5563',
+                  fontSize: '13px', fontWeight: isActive ? 700 : 500, cursor: 'pointer',
+                  transition: 'all 0.18s',
+                  outline: isActive ? '1px solid rgba(99,102,241,0.28)' : '1px solid transparent',
+                  letterSpacing: isActive ? '-0.1px' : '0',
+                  whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#94a3b8'; }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = '#4b5563'; }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </nav>
 
         {/* User info */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ color: '#e2e8f0', fontSize: '13px', fontWeight: 600 }}>{me.displayName}</div>
-            <div style={{ color: '#475569', fontSize: '11px' }}>
-              Lv.{me.profile.level} · {me.profile.xp} XP
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* XP chip */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '4px 10px', borderRadius: '20px',
+            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
+          }}>
+            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#6366f1', boxShadow: '0 0 6px #6366f1' }} />
+            <span style={{ color: '#94a3b8', fontSize: '11.5px', fontWeight: 600 }}>Lv.{me.profile.level}</span>
+            <span style={{ color: '#334155', fontSize: '11px' }}>·</span>
+            <span style={{ color: '#64748b', fontSize: '11px' }}>{me.profile.xp} XP</span>
+          </div>
+
+          {/* Avatar */}
+          <div style={{ position: 'relative' }}>
+            <div style={{
+              width: '34px', height: '34px', borderRadius: '50%',
+              background: `radial-gradient(circle at 30% 30%, ${me.avatar.bodyColor || '#6366f1'}, ${me.avatar.bodyColor || '#6366f1'}88)`,
+              border: '2px solid rgba(255,255,255,0.12)',
+              boxShadow: `0 0 12px ${me.avatar.bodyColor || '#6366f1'}44`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'white', fontWeight: 800, fontSize: '14px',
+            }}>
+              {me.displayName[0].toUpperCase()}
             </div>
           </div>
-          <div style={{
-            width: '32px', height: '32px', borderRadius: '50%',
-            background: me.avatar.bodyColor || '#6366f1',
-            border: '2px solid rgba(255,255,255,0.15)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'white', fontWeight: 800, fontSize: '13px',
-          }}>
-            {me.displayName[0].toUpperCase()}
-          </div>
+
+          <span style={{ color: '#cbd5e1', fontSize: '13px', fontWeight: 600, maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {me.displayName}
+          </span>
 
           {/* Mic toggle button */}
           <button
             onClick={toggleMic}
             title={isMicOn ? 'Turn microphone off' : 'Turn microphone on'}
             style={{
-              width: '36px', height: '36px', borderRadius: '50%',
+              width: '34px', height: '34px', borderRadius: '50%',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: isMicOn ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.05)',
-              border: isMicOn ? '1px solid rgba(16,185,129,0.4)' : '1px solid rgba(255,255,255,0.08)',
-              color: isMicOn ? '#10b981' : '#64748b',
-              fontSize: '16px', cursor: 'pointer',
-              boxShadow: isMicOn ? '0 0 0 4px rgba(16,185,129,0.15)' : 'none',
+              background: isMicOn ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.04)',
+              border: isMicOn ? '1px solid rgba(16,185,129,0.35)' : '1px solid rgba(255,255,255,0.07)',
+              color: isMicOn ? '#10b981' : '#475569',
+              fontSize: '15px', cursor: 'pointer',
+              boxShadow: isMicOn ? '0 0 0 3px rgba(16,185,129,0.12)' : 'none',
               animation: isMicOn ? 'micPulse 1.6s ease-in-out infinite' : 'none',
               transition: 'all 0.2s',
             }}
@@ -317,13 +368,13 @@ function App() {
             onClick={toggleVideo}
             title={isVideoOn ? 'Turn camera off' : 'Turn camera on'}
             style={{
-              width: '36px', height: '36px', borderRadius: '50%',
+              width: '34px', height: '34px', borderRadius: '50%',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: isVideoOn ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)',
-              border: isVideoOn ? '1px solid rgba(59,130,246,0.4)' : '1px solid rgba(255,255,255,0.08)',
-              color: isVideoOn ? '#3b82f6' : '#64748b',
-              fontSize: '16px', cursor: 'pointer',
-              boxShadow: isVideoOn ? '0 0 0 4px rgba(59,130,246,0.15)' : 'none',
+              background: isVideoOn ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.04)',
+              border: isVideoOn ? '1px solid rgba(59,130,246,0.35)' : '1px solid rgba(255,255,255,0.07)',
+              color: isVideoOn ? '#3b82f6' : '#475569',
+              fontSize: '15px', cursor: 'pointer',
+              boxShadow: isVideoOn ? '0 0 0 3px rgba(59,130,246,0.12)' : 'none',
               animation: isVideoOn ? 'videoPulse 1.6s ease-in-out infinite' : 'none',
               transition: 'all 0.2s',
             }}
@@ -335,9 +386,12 @@ function App() {
             onClick={handleLogout}
             style={{
               padding: '6px 12px', borderRadius: '8px',
-              background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)',
+              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.18)',
               color: '#f87171', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+              transition: 'all 0.15s',
             }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.15)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
           >
             Logout
           </button>
