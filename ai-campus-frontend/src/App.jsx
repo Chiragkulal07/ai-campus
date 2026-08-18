@@ -13,6 +13,7 @@ import GamingLab from './GamingLab';
 import Battlefield from './Battlefield';
 import SummaryGrid from './SummaryGrid';
 import SummaryDetail from './SummaryDetail';
+import InterviewHall from './InterviewHall';
 import { API_URL, SOCKET_URL } from './config';
 
 const NAV_TABS = [
@@ -432,7 +433,14 @@ function App() {
             />
 
             {/* Lab modal overlaid on campus */}
-            {view === 'lab' && (
+                        {/* Lab modal overlaid on campus — Interview Hall gets its own dedicated flow */}
+            {view === 'lab' && activeBuildingId === 'INTERVIEW_HALL' && (
+              <InterviewHall
+                token={token}
+                onBackToMap={handleBackToMap}
+              />
+            )}
+            {view === 'lab' && activeBuildingId !== 'INTERVIEW_HALL' && (
               <Lab
                 token={token}
                 buildingId={activeBuildingId}
