@@ -5,15 +5,26 @@ import { API_URL, SOCKET_URL } from './config';
 
 const FIRE_RATE_MS = 220; // ~4.5 shots per second while held down
 
+// Must mirror the server's constants exactly, or prediction will drift
+const BATTLE_MOVE_SPEED = 5;
+const PLAYER_RADIUS = 16;
+const TICK_INTERVAL_MS = 100;
+
+// Tuning for smoothing/reconciliation
+const INTERP_DELAY_MS = 100;   // render remote players slightly in the past for smoothness
+const SNAP_THRESHOLD = 40;     // if predicted vs server position differs more than this, snap
+const LERP_FACTOR = 0.25;      // otherwise, correct gradually by this fraction per update
+const PING_INTERVAL_MS = 3000;
+
 function Battlefield({ token, gameId, onExit }) {
   const socketRef = useRef(null);
   const arenaRef = useRef(null);
   const fireIntervalRef = useRef(null);
-  const aimAngleRef = useRef(0); // kept in sync with aimAngle state, read by the fire loop
+  const aimAngleRef = useRef(0);
   const mousePosRef = useRef({ x: 0, y: 0 });
 
   const [myUserId, setMyUserId] = useState(null);
-  const [phase, setPhase] = useState('loading'); // loading | waiting | in_progress | ended | error
+  const [phase, setPhase] = useState('loading');
   const [gameInfo, setGameInfo] = useState(null);
 
   const [arenaSize, setArenaSize] = useState({ w: 1000, h: 800 });
@@ -21,7 +32,7 @@ function Battlefield({ token, gameId, onExit }) {
   const [players, setPlayers] = useState([]);
   const [msRemaining, setMsRemaining] = useState(0);
   const [aimAngle, setAimAngle] = useState(0);
-  const [cursorPercent, setCursorPercent] = useState({ x: 50, y: 50 }); // for the crosshair overlay
+  const [cursorPercent, setCursorPercent] = useState({ x: 50, y: 50 });
   const [tracers, setTracers] = useState([]);
   const [killFeed, setKillFeed] = useState([]);
   const [errorMsg, setErrorMsg] = useState('');
@@ -29,6 +40,19 @@ function Battlefield({ token, gameId, onExit }) {
   const [lockedPlayerId, setLockedPlayerId] = useState(null);
 
   const heldKeys = useRef({ up: false, down: false, left: false, right: false });
+
+  // ── Latency-hiding state ──
+  // metaRef: non-positional data per player (hp, kills, displayName) — source of truth
+  // predictedPosRef: our own position, moved locally every tick, reconciled against server
+  // remoteSnapshotsRef: last couple of server-reported positions per OTHER player, for interpolation
+  const metaRef = useRef({});
+  const predictedPosRef = useRef(null);
+  const remoteSnapshotsRef = useRef({});
+  const wallsRef = useRef([]);
+  const arenaSizeRef = useRef({ w: 1000, h: 800 });
+  const animFrameRef = useRef(null);
+  const predictionIntervalRef = useRef(null);
+  const pingIntervalRef = useRef(null);
 
   useEffect(() => {
     try {
@@ -51,6 +75,74 @@ function Battlefield({ token, gameId, onExit }) {
       .catch(() => setErrorMsg('could not load game details'));
   }, [gameId, token]);
 
+  // Same collision rule as the server's isPositionBlocked — must stay in sync
+  function isPositionBlockedClient(x, y) {
+    for (const wall of wallsRef.current) {
+      if (
+        x + PLAYER_RADIUS > wall.x &&
+        x - PLAYER_RADIUS < wall.x + wall.width &&
+        y + PLAYER_RADIUS > wall.y &&
+        y - PLAYER_RADIUS < wall.y + wall.height
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function seedPlayerState(serverPlayers) {
+    const meta = {};
+    const snapshots = {};
+    const now = Date.now();
+
+    serverPlayers.forEach((p) => {
+      meta[p.userId] = { userId: p.userId, displayName: p.displayName, hp: p.hp, kills: p.kills };
+      if (p.userId === myUserId) {
+        predictedPosRef.current = { x: p.x, y: p.y };
+      } else {
+        snapshots[p.userId] = [{ t: now, x: p.x, y: p.y }];
+      }
+    });
+
+    metaRef.current = meta;
+    remoteSnapshotsRef.current = snapshots;
+  }
+
+  function pushRemoteSnapshot(userId, x, y) {
+    const buf = remoteSnapshotsRef.current[userId] || [];
+    buf.push({ t: Date.now(), x, y });
+    if (buf.length > 3) buf.shift();
+    remoteSnapshotsRef.current[userId] = buf;
+  }
+
+  function getInterpolatedPosition(userId, fallbackX, fallbackY) {
+    const buf = remoteSnapshotsRef.current[userId];
+    if (!buf || buf.length === 0) return { x: fallbackX, y: fallbackY };
+    if (buf.length === 1) return { x: buf[0].x, y: buf[0].y };
+
+    const renderTime = Date.now() - INTERP_DELAY_MS;
+    const latest = buf[buf.length - 1];
+    const earliest = buf[0];
+
+    if (renderTime >= latest.t) return { x: latest.x, y: latest.y };
+    if (renderTime <= earliest.t) return { x: earliest.x, y: earliest.y };
+
+    for (let i = 0; i < buf.length - 1; i++) {
+      const a = buf[i];
+      const b = buf[i + 1];
+      if (renderTime >= a.t && renderTime <= b.t) {
+        const span = b.t - a.t;
+        const frac = span === 0 ? 0 : (renderTime - a.t) / span;
+        return { x: a.x + (b.x - a.x) * frac, y: a.y + (b.y - a.y) * frac };
+      }
+    }
+    return { x: latest.x, y: latest.y };
+  }
+
   useEffect(() => {
     const socket = io(SOCKET_URL);
     socketRef.current = socket;
@@ -69,36 +161,64 @@ function Battlefield({ token, gameId, onExit }) {
 
     socket.on('battle:room-state', (state) => {
       setWalls(state.walls);
+      wallsRef.current = state.walls;
       setArenaSize({ w: state.arenaWidth, h: state.arenaHeight });
-      setPlayers(state.players);
+      arenaSizeRef.current = { w: state.arenaWidth, h: state.arenaHeight };
       setMsRemaining(state.msRemaining);
+      seedPlayerState(state.players);
+      setPlayers(state.players); // initial paint before the render loop takes over
     });
 
     socket.on('battle:update', (data) => {
-      setPlayers(data.players);
       setMsRemaining(data.msRemaining);
-    });
 
-    socket.on('battle:shot-fired', (data) => {
-      if (data.shooterId === myUserId) return; // Ignore local player shots to prevent duplicate tracers
+      data.players.forEach((p) => {
+        metaRef.current[p.userId] = {
+          userId: p.userId, displayName: p.displayName, hp: p.hp, kills: p.kills
+        };
 
-      setPlayers((currentPlayers) => {
-        const shooter = currentPlayers.find((p) => p.userId === data.shooterId);
-        if (shooter && data.hitPoint) {
-          const tracerId = `${data.shooterId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-          setTracers((prev) => [...prev, { id: tracerId, x1: shooter.x, y1: shooter.y, x2: data.hitPoint.x, y2: data.hitPoint.y }]);
-          setTimeout(() => setTracers((prev) => prev.filter((t) => t.id !== tracerId)), 120);
+        if (p.userId === myUserId) {
+          // Reconcile our predicted position against the server's authoritative one
+          if (!predictedPosRef.current) {
+            predictedPosRef.current = { x: p.x, y: p.y };
+            return;
+          }
+          const dx = p.x - predictedPosRef.current.x;
+          const dy = p.y - predictedPosRef.current.y;
+          const dist = Math.hypot(dx, dy);
+
+          if (dist > SNAP_THRESHOLD) {
+            predictedPosRef.current = { x: p.x, y: p.y };
+          } else if (dist > 0.5) {
+            predictedPosRef.current = {
+              x: predictedPosRef.current.x + dx * LERP_FACTOR,
+              y: predictedPosRef.current.y + dy * LERP_FACTOR
+            };
+          }
+        } else {
+          pushRemoteSnapshot(p.userId, p.x, p.y);
         }
-        return currentPlayers;
       });
     });
 
+    socket.on('battle:shot-fired', (data) => {
+      if (data.shooterId === myUserId) return;
+
+      const shooterMeta = metaRef.current[data.shooterId];
+      const shooterPos = data.shooterId === myUserId
+        ? predictedPosRef.current
+        : getInterpolatedPosition(data.shooterId, null, null);
+
+      if (shooterMeta && shooterPos && shooterPos.x != null && data.hitPoint) {
+        const tracerId = `${data.shooterId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        setTracers((prev) => [...prev, { id: tracerId, x1: shooterPos.x, y1: shooterPos.y, x2: data.hitPoint.x, y2: data.hitPoint.y }]);
+        setTimeout(() => setTracers((prev) => prev.filter((t) => t.id !== tracerId)), 120);
+      }
+    });
+
     socket.on('battle:hit', (data) => {
-      setPlayers((currentPlayers) =>
-        currentPlayers.map((p) =>
-          p.userId === data.targetId ? { ...p, hp: data.newHp } : p
-        )
-      );
+      const m = metaRef.current[data.targetId];
+      if (m) m.hp = data.newHp;
     });
 
     socket.on('battle:kill', (data) => {
@@ -106,26 +226,30 @@ function Battlefield({ token, gameId, onExit }) {
       setKillFeed((prev) => [...prev, { id: feedId, text: `${data.killerName} ➔ ${data.victimName}` }]);
       setTimeout(() => setKillFeed((prev) => prev.filter((k) => k.id !== feedId)), 4000);
 
-      // Set victim HP to 0 immediately so they disappear on screen
-      setPlayers((currentPlayers) =>
-        currentPlayers.map((p) =>
-          p.userId === data.victimId ? { ...p, hp: 0 } : p
-        )
-      );
+      const m = metaRef.current[data.victimId];
+      if (m) m.hp = 0;
     });
 
     socket.on('battle:respawn', (data) => {
-      // Instantly position the player and set health back to 100
-      setPlayers((currentPlayers) =>
-        currentPlayers.map((p) =>
-          p.userId === data.userId ? { ...p, x: data.x, y: data.y, hp: 100 } : p
-        )
-      );
+      const m = metaRef.current[data.userId];
+      if (m) m.hp = 100;
+
+      if (data.userId === myUserId) {
+        predictedPosRef.current = { x: data.x, y: data.y };
+      } else {
+        // hard reset the interpolation buffer so we don't tween across the whole arena
+        remoteSnapshotsRef.current[data.userId] = [{ t: Date.now(), x: data.x, y: data.y }];
+      }
     });
 
     socket.on('battle:match-ended', (data) => {
       setFinalLeaderboard(data.leaderboard);
       setPhase('ended');
+    });
+
+    socket.on('battle:pong', (data) => {
+      const rtt = Date.now() - data.clientTime;
+      socket.emit('battle:latency-report', { token, rtt });
     });
 
     socket.on('game:error', (err) => {
@@ -135,6 +259,69 @@ function Battlefield({ token, gameId, onExit }) {
     return () => socket.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId, token, phase === 'in_progress', myUserId]);
+
+  // ── Local prediction loop: move our own player immediately, don't wait for the server ──
+  useEffect(() => {
+    if (phase !== 'in_progress') return;
+
+    predictionIntervalRef.current = setInterval(() => {
+      if (!predictedPosRef.current) return;
+      const dx = (heldKeys.current.right ? 1 : 0) - (heldKeys.current.left ? 1 : 0);
+      const dy = (heldKeys.current.down ? 1 : 0) - (heldKeys.current.up ? 1 : 0);
+      if (dx === 0 && dy === 0) return;
+
+      const { w, h } = arenaSizeRef.current;
+      let nextX = predictedPosRef.current.x;
+      let nextY = predictedPosRef.current.y;
+
+      if (dx !== 0) {
+        const testX = clamp(nextX + dx * BATTLE_MOVE_SPEED, PLAYER_RADIUS, w - PLAYER_RADIUS);
+        if (!isPositionBlockedClient(testX, nextY)) nextX = testX;
+      }
+      if (dy !== 0) {
+        const testY = clamp(nextY + dy * BATTLE_MOVE_SPEED, PLAYER_RADIUS, h - PLAYER_RADIUS);
+        if (!isPositionBlockedClient(nextX, testY)) nextY = testY;
+      }
+
+      predictedPosRef.current = { x: nextX, y: nextY };
+    }, TICK_INTERVAL_MS);
+
+    return () => clearInterval(predictionIntervalRef.current);
+  }, [phase]);
+
+  // ── Render loop: builds the `players` array from predicted + interpolated positions ──
+  useEffect(() => {
+    if (phase !== 'in_progress') return;
+
+    function frame() {
+      const merged = Object.values(metaRef.current).map((m) => {
+        if (m.userId === myUserId) {
+          const pos = predictedPosRef.current || { x: 0, y: 0 };
+          return { ...m, x: pos.x, y: pos.y };
+        }
+        const pos = getInterpolatedPosition(m.userId, 0, 0);
+        return { ...m, x: pos.x, y: pos.y };
+      });
+      setPlayers(merged);
+      animFrameRef.current = requestAnimationFrame(frame);
+    }
+
+    animFrameRef.current = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(animFrameRef.current);
+  }, [phase, myUserId]);
+
+  // ── Ping loop: measure RTT periodically so the server can lag-compensate our shots ──
+  useEffect(() => {
+    if (phase !== 'in_progress') return;
+
+    pingIntervalRef.current = setInterval(() => {
+      if (socketRef.current) {
+        socketRef.current.emit('battle:ping', { clientTime: Date.now() });
+      }
+    }, PING_INTERVAL_MS);
+
+    return () => clearInterval(pingIntervalRef.current);
+  }, [phase]);
 
   // ── Aim Assist Target Snapping & Locking Logic ──
   useEffect(() => {
@@ -149,7 +336,6 @@ function Battlefield({ token, gameId, onExit }) {
     let bestDist = Infinity;
     let foundTargetId = null;
 
-    // Generous snap radius to assist with aiming on target players
     const ASSIST_RADIUS = 95;
 
     players.forEach((p) => {
@@ -180,8 +366,6 @@ function Battlefield({ token, gameId, onExit }) {
     if (!arenaRef.current) return;
 
     const rect = arenaRef.current.getBoundingClientRect();
-
-    // Simple percentage position on screen for crosshair drawing
     const xPct = ((e.clientX - rect.left) / rect.width) * 100;
     const yPct = ((e.clientY - rect.top) / rect.height) * 100;
     setCursorPercent({ x: xPct, y: yPct });
@@ -211,8 +395,6 @@ function Battlefield({ token, gameId, onExit }) {
     if (!me) return;
 
     const angle = aimAngleRef.current;
-
-    // Find hit point: if locked, hit the enemy. Otherwise, project 1200px out.
     let targetX = me.x + Math.cos(angle) * 1200;
     let targetY = me.y + Math.sin(angle) * 1200;
 
@@ -237,7 +419,7 @@ function Battlefield({ token, gameId, onExit }) {
   };
 
   const startFiring = () => {
-    if (fireIntervalRef.current) return; // already firing, don't stack intervals
+    if (fireIntervalRef.current) return;
     fireOnce();
     fireIntervalRef.current = setInterval(fireOnce, FIRE_RATE_MS);
   };
@@ -287,7 +469,6 @@ function Battlefield({ token, gameId, onExit }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, gameId, token]);
 
-  // ── Loading ──
   if (phase === 'loading') {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh', color: 'rgba(255,255,255,0.7)' }}>
@@ -299,7 +480,6 @@ function Battlefield({ token, gameId, onExit }) {
     );
   }
 
-  // ── Waiting room ──
   if (phase === 'waiting') {
     const isCreator = gameInfo && myUserId === gameInfo.creatorId;
 
@@ -417,12 +597,10 @@ function Battlefield({ token, gameId, onExit }) {
     );
   }
 
-  // ── Match ended ──
   if (phase === 'ended') {
     return <MatchResults leaderboard={finalLeaderboard} myUserId={myUserId} onExit={onExit} />;
   }
 
-  // ── Live arena ──
   const secondsLeft = Math.max(0, Math.floor(msRemaining / 1000));
   const minutes = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
   const seconds = String(secondsLeft % 60).padStart(2, '0');
@@ -433,16 +611,11 @@ function Battlefield({ token, gameId, onExit }) {
     <div style={{ padding: '24px 20px', maxWidth: '1000px', margin: '0 auto', color: '#e2e8f0' }}>
       <style>{`
         @keyframes bullet-fly {
-          0% {
-            transform: translate(0px, 0px);
-          }
-          100% {
-            transform: translate(var(--dx), var(--dy));
-          }
+          0% { transform: translate(0px, 0px); }
+          100% { transform: translate(var(--dx), var(--dy)); }
         }
       `}</style>
 
-      {/* Top HUD bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '16px' }}>
         <button
           onClick={onExit}
@@ -498,7 +671,6 @@ function Battlefield({ token, gameId, onExit }) {
         </div>
       )}
 
-      {/* Main Arena Window */}
       <div
         ref={arenaRef}
         onMouseMove={handleMouseMove}
@@ -510,7 +682,6 @@ function Battlefield({ token, gameId, onExit }) {
           position: 'relative',
           width: '100%',
           aspectRatio: `${arenaSize.w} / ${arenaSize.h}`,
-          // Holographic sci-fi grid deck styling
           background: '#090d16',
           backgroundImage: `
             linear-gradient(rgba(99, 102, 241, 0.05) 1.5px, transparent 1.5px),
@@ -521,14 +692,13 @@ function Battlefield({ token, gameId, onExit }) {
           overflow: 'hidden',
           border: '1.5px solid rgba(99, 102, 241, 0.15)',
           boxShadow: '0 20px 50px rgba(0,0,0,0.7), inset 0 0 40px rgba(99, 102, 241, 0.05)',
-          cursor: 'none', // hide standard mouse cursor
+          cursor: 'none',
           userSelect: 'none',
           WebkitUserSelect: 'none',
           msUserSelect: 'none',
           MozUserSelect: 'none'
         }}
       >
-        {/* Arena obstacles / walls */}
         {walls.map((wall, i) => (
           <div
             key={i}
@@ -538,7 +708,6 @@ function Battlefield({ token, gameId, onExit }) {
               top: `${(wall.y / arenaSize.h) * 100}%`,
               width: `${(wall.width / arenaSize.w) * 100}%`,
               height: `${(wall.height / arenaSize.h) * 100}%`,
-              // Futuristic barrier styling
               background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
               border: '1.5px solid rgba(99, 102, 241, 0.3)',
               borderRadius: '6px',
@@ -548,7 +717,6 @@ function Battlefield({ token, gameId, onExit }) {
           />
         ))}
 
-        {/* Lasers / Bullet Tracers layer */}
         <svg style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', pointerEvents: 'none' }} viewBox={`0 0 ${arenaSize.w} ${arenaSize.h}`}>
           <defs>
             <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
@@ -556,10 +724,8 @@ function Battlefield({ token, gameId, onExit }) {
               <feComposite in="SourceGraphic" in2="blur" operator="over" />
             </filter>
           </defs>
-          {/* Aiming guideline */}
           {me && me.hp > 0 && (
             <g>
-              {/* Outer bright laser guide glow */}
               <line
                 x1={me.x}
                 y1={me.y}
@@ -571,7 +737,6 @@ function Battlefield({ token, gameId, onExit }) {
                 strokeDasharray="6 8"
                 filter="url(#glow)"
               />
-              {/* Core guide line */}
               <line
                 x1={me.x}
                 y1={me.y}
@@ -598,7 +763,6 @@ function Battlefield({ token, gameId, onExit }) {
                   animation: 'bullet-fly 0.12s linear forwards'
                 }}
               >
-                {/* Outer glowing plasma streak */}
                 <line
                   x1={t.x1}
                   y1={t.y1}
@@ -609,7 +773,6 @@ function Battlefield({ token, gameId, onExit }) {
                   opacity="0.8"
                   filter="url(#glow)"
                 />
-                {/* Core bright bullet hot center */}
                 <line
                   x1={t.x1}
                   y1={t.y1}
@@ -624,7 +787,6 @@ function Battlefield({ token, gameId, onExit }) {
           })}
         </svg>
 
-        {/* Render Players */}
         {players.map((p) => {
           const isMe = p.userId === myUserId;
           const isTargeted = p.userId === lockedPlayerId;
@@ -645,7 +807,6 @@ function Battlefield({ token, gameId, onExit }) {
                 pointerEvents: 'none'
               }}
             >
-              {/* Target lock overlay bracket around enemy */}
               {isTargeted && (
                 <div style={{
                   position: 'absolute',
@@ -661,7 +822,6 @@ function Battlefield({ token, gameId, onExit }) {
                 }} />
               )}
 
-              {/* Player Tag */}
               <span style={{
                 fontSize: '11px',
                 fontWeight: isMe ? '700' : '500',
@@ -677,7 +837,6 @@ function Battlefield({ token, gameId, onExit }) {
                 {p.displayName}
               </span>
 
-              {/* Health Bar */}
               <div style={{
                 width: '48px',
                 height: '6px',
@@ -696,7 +855,6 @@ function Battlefield({ token, gameId, onExit }) {
                 }} />
               </div>
 
-              {/* Player Character Avatar Mesh */}
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -704,7 +862,6 @@ function Battlefield({ token, gameId, onExit }) {
                 transform: isMe && facingLeft ? 'scaleX(-1)' : 'none',
                 position: 'relative'
               }}>
-                {/* Local player glow aura */}
                 {isMe && (
                   <div style={{
                     position: 'absolute',
@@ -718,7 +875,6 @@ function Battlefield({ token, gameId, onExit }) {
                   }} />
                 )}
 
-                {/* Head */}
                 <div style={{
                   width: '12px',
                   height: '12px',
@@ -730,7 +886,6 @@ function Battlefield({ token, gameId, onExit }) {
                   zIndex: 2
                 }} />
 
-                {/* Body Suit */}
                 <div style={{
                   width: '18px',
                   height: '16px',
@@ -745,7 +900,6 @@ function Battlefield({ token, gameId, onExit }) {
           );
         })}
 
-        {/* Crosshair — Custom Neon Reticle with responsive lock states */}
         <div
           style={{
             position: 'absolute',
@@ -798,7 +952,6 @@ function Battlefield({ token, gameId, onExit }) {
             transform: 'translateY(-50%)',
             boxShadow: `0 0 6px ${lockedPlayerId ? '#ef4444' : '#6366f1'}`
           }} />
-          {/* Inner ring */}
           <div style={{
             position: 'absolute',
             left: '50%',
@@ -810,7 +963,6 @@ function Battlefield({ token, gameId, onExit }) {
             transform: 'translate(-50%, -50%)',
             boxShadow: `inset 0 0 4px ${lockedPlayerId ? 'rgba(239, 68, 68, 0.2)' : 'rgba(99, 102, 241, 0.2)'}`
           }} />
-          {/* Central dot */}
           <div style={{
             position: 'absolute',
             left: '50%',
@@ -825,14 +977,12 @@ function Battlefield({ token, gameId, onExit }) {
         </div>
       </div>
 
-      {/* Footer Controls & Live Activity Feed */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '16px', gap: '20px' }}>
         <p style={{ fontSize: '13px', color: '#64748b', lineHeight: '1.6' }}>
           ⌨️ Use <strong style={{ color: '#94a3b8' }}>W, A, S, D</strong> or arrows to move.<br />
           🖱️ Aim with mouse, hold <strong style={{ color: '#94a3b8' }}>Left Click</strong> or <strong style={{ color: '#94a3b8' }}>Spacebar</strong> to fire lasers.
         </p>
 
-        {/* Floating Glass Kill Feed */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',
@@ -861,7 +1011,6 @@ function Battlefield({ token, gameId, onExit }) {
         </div>
       </div>
 
-      {/* Down state indicator */}
       {me && me.hp <= 0 && (
         <div style={{
           position: 'fixed',

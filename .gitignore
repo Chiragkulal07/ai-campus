@@ -1,3 +1,5 @@
 node_modules/
-
-backend/.env
+.env*
+ai-campus-backend/.env
+ai-campus-frontend/.env
+ai-campus-frontend/.env.local   
