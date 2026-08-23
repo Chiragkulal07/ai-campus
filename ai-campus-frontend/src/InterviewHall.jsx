@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { API_URL } from './config';
 
 const PHASES = {
@@ -17,12 +17,23 @@ function InterviewHall({ token, onBackToMap }) {
   const [questionCount, setQuestionCount] = useState(5);
   const [questions, setQuestions] = useState([]);
 
+  const [extractedSkills, setExtractedSkills] = useState([]);
+  const [extractedProjects, setExtractedProjects] = useState([]);
+  const [jobSearchResults, setJobSearchResults] = useState([]);
+
   const [sessionId, setSessionId] = useState(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState('');
   const [answerDraft, setAnswerDraft] = useState('');
 
   const [results, setResults] = useState(null);
+
+  // ── Mic / speech-to-text state ──
+  const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(true);
+  const [micError, setMicError] = useState('');
+  const recognitionRef = useRef(null);
+  const baseTextRef = useRef(''); // text already in the box before this listening session started
 
   const formInputStyle = {
     width: '100%',
@@ -36,7 +47,115 @@ function InterviewHall({ token, onBackToMap }) {
     boxSizing: 'border-box'
   };
 
-  // ── Phase 1: Resume upload ──
+  // ── Set up speech recognition once, safely (feature-detect, never throw) ──
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setSpeechSupported(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event) => {
+      let finalTranscript = '';
+      let interimTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + ' ';
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+
+      // baseTextRef holds whatever was in the box before this listening session
+      // (typed text, or previously finalized speech), so we never overwrite it —
+      // only append newly recognized speech on top.
+      if (finalTranscript) {
+        baseTextRef.current = (baseTextRef.current + ' ' + finalTranscript).trim();
+      }
+      setAnswerDraft((baseTextRef.current + ' ' + interimTranscript).trim());
+    };
+
+    recognition.onerror = (event) => {
+      console.warn('[speech] recognition error:', event.error);
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setMicError('Microphone access was denied. Please allow mic permissions and try again.');
+      } else if (event.error === 'no-speech') {
+        // benign — just means silence, don't show a scary error
+      } else {
+        setMicError('Voice input hit a snag. You can keep typing instead.');
+      }
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      try {
+        recognition.stop();
+      } catch (err) {
+        // already stopped — safe to ignore
+      }
+    };
+  }, []);
+
+  const startListening = () => {
+    if (!recognitionRef.current || isListening) return;
+    setMicError('');
+    baseTextRef.current = answerDraft; // preserve anything already typed/spoken
+    try {
+      recognitionRef.current.start();
+      setIsListening(true);
+    } catch (err) {
+      // start() throws if called while already running — safe to ignore
+      console.warn('[speech] could not start:', err.message);
+    }
+  };
+
+  const stopListening = () => {
+    if (!recognitionRef.current) return;
+    try {
+      recognitionRef.current.stop();
+    } catch (err) {
+      // already stopped — safe to ignore
+    }
+    setIsListening(false);
+  };
+
+  const toggleListening = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
+  // Stop listening automatically whenever we leave the answering phase or move
+  // to the next question, so the mic never keeps running in the background.
+  useEffect(() => {
+    if (phase !== PHASES.ANSWERING) {
+      stopListening();
+    }
+  }, [phase]);
+
+  useEffect(() => {
+    stopListening();
+    baseTextRef.current = '';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentQuestionIndex]);
+
+  // ── Phase 1: Resume upload (PDF or DOCX) ──
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -70,7 +189,7 @@ function InterviewHall({ token, onBackToMap }) {
     }
   };
 
-  // ── Phase 2: Generate questions + start session ──
+  // ── Phase 2: Analyze resume + generate questions + search jobs, then start session ──
   const handleGenerateAndStart = async () => {
     setLoading(true);
     setError('');
@@ -92,7 +211,13 @@ function InterviewHall({ token, onBackToMap }) {
       const startRes = await fetch(`${API_URL}/interview/start-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ resumeText, questions: genData.questions })
+        body: JSON.stringify({
+          resumeText,
+          questions: genData.questions,
+          extractedSkills: genData.extractedSkills,
+          extractedProjects: genData.extractedProjects,
+          jobSearchResults: genData.jobSearchResults
+        })
       });
       const startData = await startRes.json();
 
@@ -103,6 +228,9 @@ function InterviewHall({ token, onBackToMap }) {
       }
 
       setQuestions(genData.questions);
+      setExtractedSkills(genData.extractedSkills || []);
+      setExtractedProjects(genData.extractedProjects || []);
+      setJobSearchResults(genData.jobSearchResults || []);
       setSessionId(startData.sessionId);
       setCurrentQuestionIndex(startData.currentQuestionIndex);
       setCurrentQuestion(startData.currentQuestion);
@@ -117,6 +245,7 @@ function InterviewHall({ token, onBackToMap }) {
   // ── Phase 3: Submit each answer ──
   const handleSubmitAnswer = async () => {
     if (!answerDraft.trim()) return;
+    stopListening();
     setLoading(true);
     setError('');
 
@@ -135,6 +264,7 @@ function InterviewHall({ token, onBackToMap }) {
       }
 
       setAnswerDraft('');
+      baseTextRef.current = '';
 
       if (data.readyToFinish) {
         await handleFinish();
@@ -177,16 +307,26 @@ function InterviewHall({ token, onBackToMap }) {
   };
 
   const handleStartOver = () => {
+    stopListening();
     setPhase(PHASES.UPLOAD);
     setError('');
     setResumeText('');
     setQuestions([]);
+    setExtractedSkills([]);
+    setExtractedProjects([]);
+    setJobSearchResults([]);
     setSessionId(null);
     setCurrentQuestionIndex(0);
     setCurrentQuestion('');
     setAnswerDraft('');
+    baseTextRef.current = '';
+    setMicError('');
     setResults(null);
   };
+
+  // Results comes straight from MongoDB via the /finish response, which already
+  // includes jobSearchResults (real Tavily data, saved at start-session time).
+  const realJobResults = results?.jobSearchResults || [];
 
   return (
     <div style={{
@@ -260,7 +400,7 @@ function InterviewHall({ token, onBackToMap }) {
                 Load Resume Profile
               </h3>
               <p style={{ color: '#94a3b8', fontSize: '14.5px', marginBottom: '32px', maxWidth: '420px', margin: '0 auto 32px', lineHeight: '1.6' }}>
-                Upload your PDF CV. The simulator will compile structural inquiries custom-tailored to your stack.
+                Upload your PDF or DOCX CV. The simulator will compile structural inquiries custom-tailored to your stack.
               </p>
               <label style={{
                 display: 'inline-block', padding: '16px 40px',
@@ -270,13 +410,13 @@ function InterviewHall({ token, onBackToMap }) {
                 boxShadow: '0 8px 24px rgba(245, 158, 11, 0.3)',
                 transition: 'all 0.2s'
               }}
-              onMouseEnter={e => { if (!loading) { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 12px 30px rgba(245, 158, 11, 0.45)'; } }}
-              onMouseLeave={e => { if (!loading) { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(245, 158, 11, 0.3)'; } }}
+                onMouseEnter={e => { if (!loading) { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 12px 30px rgba(245, 158, 11, 0.45)'; } }}
+                onMouseLeave={e => { if (!loading) { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(245, 158, 11, 0.3)'; } }}
               >
-                {loading ? 'Processing Document...' : 'Select Resume (PDF)'}
+                {loading ? 'Processing Document...' : 'Select Resume (PDF or DOCX)'}
                 <input
                   type="file"
-                  accept="application/pdf"
+                  accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   onChange={handleFileChange}
                   disabled={loading}
                   style={{ display: 'none' }}
@@ -301,7 +441,7 @@ function InterviewHall({ token, onBackToMap }) {
                   Target Questions
                 </label>
                 <input
-                  type="number" min="3" max="10" value={questionCount}
+                  type="number" min="3" max="5" value={questionCount}
                   onChange={(e) => setQuestionCount(e.target.value)}
                   style={{
                     ...formInputStyle,
@@ -365,10 +505,55 @@ function InterviewHall({ token, onBackToMap }) {
                 </p>
               </div>
 
+              {/* ── Mic control row ── */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+                {speechSupported ? (
+                  <button
+                    type="button"
+                    onClick={toggleListening}
+                    disabled={loading}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '9px 16px',
+                      background: isListening ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.1)',
+                      border: `1px solid ${isListening ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.3)'}`,
+                      color: isListening ? '#f87171' : '#fbbf24',
+                      borderRadius: '12px',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      opacity: loading ? 0.5 : 1,
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    <span style={{
+                      width: '8px', height: '8px', borderRadius: '50%',
+                      background: isListening ? '#ef4444' : '#f59e0b',
+                      animation: isListening ? 'pulse 1s infinite' : 'none'
+                    }} />
+                    {isListening ? '🎙️ Listening… tap to stop' : '🎤 Speak your answer'}
+                  </button>
+                ) : (
+                  <span style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>
+                    Voice input isn't supported in this browser — you can still type your answer.
+                  </span>
+                )}
+              </div>
+
+              {micError && (
+                <div style={{
+                  padding: '8px 14px', background: 'rgba(239,68,68,0.08)',
+                  border: '1px solid rgba(239,68,68,0.2)', borderRadius: '10px',
+                  color: '#f87171', fontSize: '12.5px', marginBottom: '14px'
+                }}>
+                  {micError}
+                </div>
+              )}
+
               <textarea
                 value={answerDraft}
-                onChange={(e) => setAnswerDraft(e.target.value)}
-                placeholder="Draft your answer text here (elaborate to receive accurate scoring)..."
+                onChange={(e) => { setAnswerDraft(e.target.value); baseTextRef.current = e.target.value; }}
+                placeholder="Draft your answer text here, or tap the mic to speak it (elaborate to receive accurate scoring)..."
                 rows={7}
                 style={{
                   ...formInputStyle,
@@ -377,11 +562,11 @@ function InterviewHall({ token, onBackToMap }) {
                   padding: '16px 20px',
                   fontSize: '15px',
                   lineHeight: '1.6',
-                  borderColor: 'rgba(255, 255, 255, 0.1)',
+                  borderColor: isListening ? 'rgba(239,68,68,0.4)' : 'rgba(255, 255, 255, 0.1)',
                   background: 'rgba(15, 23, 42, 0.65)'
                 }}
                 onFocus={(e) => { e.target.style.borderColor = 'rgba(245, 158, 11, 0.5)'; e.target.style.boxShadow = '0 0 15px rgba(245, 158, 11, 0.08)'; }}
-                onBlur={(e) => { e.target.style.borderColor = 'rgba(255, 255, 255, 0.1)'; e.target.style.boxShadow = 'none'; }}
+                onBlur={(e) => { e.target.style.borderColor = isListening ? 'rgba(239,68,68,0.4)' : 'rgba(255, 255, 255, 0.1)'; e.target.style.boxShadow = 'none'; }}
               />
 
               <button
@@ -455,20 +640,62 @@ function InterviewHall({ token, onBackToMap }) {
                 borderRadius: '20px', padding: '24px 28px', marginBottom: '20px',
                 boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
               }}>
-                <h4 style={{ margin: '0 0 16px', color: '#34d399', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>
-                  Simulated Ideal Roles
+                <h4 style={{ margin: '0 0 12px', color: '#34d399', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>
+                  Recommended Target Role
                 </h4>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                  {results.roleSuggestions.map((role, i) => (
-                    <span key={i} style={{
-                      background: 'rgba(16,185,129,0.08)', color: '#34d399',
-                      border: '1px solid rgba(16,185,129,0.2)', borderRadius: '12px',
-                      padding: '8px 16px', fontSize: '13.5px', fontWeight: 700
-                    }}>
-                      💼 {role}
-                    </span>
-                  ))}
-                </div>
+                <p style={{ color: '#f8fafc', fontSize: '18px', fontWeight: 700, margin: 0 }}>
+                  🎯 {results.targetRole}
+                </p>
+              </div>
+
+              {/* REAL job listings — straight from Tavily search, clickable, no LLM invention involved */}
+              <div style={{
+                background: 'rgba(15, 23, 42, 0.4)', border: '1px solid rgba(255,255,255,0.05)',
+                borderRadius: '20px', padding: '24px 28px', marginBottom: '20px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.1)'
+              }}>
+                <h4 style={{ margin: '0 0 16px', color: '#34d399', fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>
+                  Real Job Openings Matching Your Skills
+                </h4>
+                {realJobResults.length === 0 ? (
+                  <p style={{ color: '#64748b', fontSize: '13.5px', fontStyle: 'italic', margin: 0 }}>
+                    No live job listings found for this skillset right now.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {realJobResults.map((job, i) => (
+                      <a
+                        key={i}
+                        href={job.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'block',
+                          background: 'rgba(16,185,129,0.06)',
+                          border: '1px solid rgba(16,185,129,0.18)',
+                          borderRadius: '14px',
+                          padding: '14px 18px',
+                          textDecoration: 'none',
+                          transition: 'all 0.15s'
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.12)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.35)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(16,185,129,0.06)'; e.currentTarget.style.borderColor = 'rgba(16,185,129,0.18)'; }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '14px' }}>🔗</span>
+                          <span style={{ color: '#34d399', fontSize: '14.5px', fontWeight: 700 }}>
+                            {job.title}
+                          </span>
+                        </div>
+                        {job.snippet && (
+                          <p style={{ color: '#94a3b8', fontSize: '12.5px', margin: '0 0 0 22px', lineHeight: '1.5' }}>
+                            {job.snippet}
+                          </p>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div style={{

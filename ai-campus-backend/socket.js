@@ -16,7 +16,8 @@ const ARENA_HEIGHT = 800;
 const PLAYER_RADIUS = 16;
 const BATTLE_MOVE_SPEED = 5;
 const TICK_INTERVAL_MS = 100; // battle loop tick rate — also the unit for position history
-const HISTORY_SIZE = 30; // 30 ticks * 100ms = 3s of rewind buffer per player
+const HISTORY_SIZE = 30;
+const MAX_REWIND_MS = 200; // 30 ticks * 100ms = 3s of rewind buffer per player
 
 const WALLS = [
   { x: 400, y: 150, width: 200, height: 40 },
@@ -483,7 +484,8 @@ function initSocket(io) {
       // were when the shooter's client actually saw them, based on shooter's
       // known RTT. We rewind by half the RTT (one-way trip to the server).
       const latency = latencyByUserId[shooterId] || 0;
-      const ticksToRewind = Math.round((latency / 2) / TICK_INTERVAL_MS);
+      const compensationMs = Math.min(latency / 2, MAX_REWIND_MS);
+      const ticksToRewind = Math.round(compensationMs / TICK_INTERVAL_MS);
       const rewindTick = battle.tick - ticksToRewind;
 
       const rewoundPositions = {};

@@ -139,34 +139,52 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
         ))}
       </div>
 
-      {/* Movement HUD */}
-      <div style={{ position: 'fixed', bottom: '32px', right: '32px', zIndex: 100 }}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
+      {/* ── D-pad Movement HUD ── */}
+      <div style={{
+        position: 'fixed',
+        bottom: '28px',
+        right: '28px',
+        zIndex: 100,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '4px',
+        background: 'rgba(6, 10, 18, 0.7)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: '16px',
+        padding: '12px 14px 10px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
+      }}>
+        {/* Up row */}
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
           <button
             {...makeBtn('up', '↑')}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#94a3b8'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(99,102,241,0.18)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,0.5)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = btnBase.background; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#94a3b8'; }}
           />
         </div>
+        {/* Middle row: left, down, right */}
         <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
           <button
             {...makeBtn('left', '←')}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#94a3b8'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(99,102,241,0.18)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,0.5)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = btnBase.background; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#94a3b8'; }}
           />
           <button
             {...makeBtn('down', '↓')}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#94a3b8'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(99,102,241,0.18)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,0.5)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = btnBase.background; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#94a3b8'; }}
           />
           <button
             {...makeBtn('right', '→')}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.4)'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#94a3b8'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(99,102,241,0.18)'; e.currentTarget.style.borderColor = 'rgba(99,102,241,0.5)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = btnBase.background; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#94a3b8'; }}
           />
         </div>
-        <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '10px', marginTop: '6px', fontFamily: "'Inter',sans-serif" }}>
-          Arrow keys or buttons
+        <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.28)', fontSize: '9px', marginTop: '4px', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+          WASD or click
         </p>
       </div>
     </div>
@@ -207,24 +225,24 @@ function Building({ id, x, y, name, color, playerX, playerY, onEnter, emoji }) {
             <button
               onClick={() => onEnter(id, name)}
               style={{
-                padding: '10px 20px',
-                fontSize: '14px',
+                padding: '9px 22px',
+                fontSize: '13px',
                 fontWeight: 700,
-                letterSpacing: '0.5px',
+                letterSpacing: '0.3px',
                 backgroundColor: '#ffffff',
                 color: '#1e1b4b',
                 border: 'none',
-                borderRadius: '12px',
+                borderRadius: '10px',
                 cursor: 'pointer',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.5), 0 0 15px rgba(255,255,255,0.35)',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.5), 0 0 12px rgba(255,255,255,0.3)',
                 whiteSpace: 'nowrap',
                 pointerEvents: 'auto',
                 transition: 'all 0.15s'
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.05)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.04)'; e.currentTarget.style.boxShadow = '0 10px 28px rgba(0,0,0,0.6), 0 0 18px rgba(255,255,255,0.45)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.5), 0 0 12px rgba(255,255,255,0.3)'; }}
             >
-              🔌 Connect to {name}
+              ⚡ Enter {name}
             </button>
           </motion.div>
         )}
@@ -235,60 +253,62 @@ function Building({ id, x, y, name, color, playerX, playerY, onEnter, emoji }) {
         position: 'relative',
         width: '210px',
         height: '140px',
-        background: 'rgba(15, 23, 42, 0.65)',
-        backdropFilter: 'blur(12px)',
-        border: `2px solid ${color}`,
-        borderRadius: '24px 24px 16px 16px',
-        boxShadow: `0 15px 40px rgba(0,0,0,0.6), 0 0 25px ${color}33, inset 0 0 20px ${color}1a`,
+        background: 'rgba(9, 14, 28, 0.75)',
+        backdropFilter: 'blur(14px)',
+        border: `1.5px solid ${color}55`,
+        borderRadius: '20px 20px 14px 14px',
+        boxShadow: `0 12px 36px rgba(0,0,0,0.65), 0 0 20px ${color}22, inset 0 1px 0 ${color}33`,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: '6px',
+        gap: '5px',
         padding: '16px'
       }}>
-        {/* Floating Holo-ring at the top */}
+        {/* Top accent bar */}
         <div style={{
           position: 'absolute',
-          top: '-10px',
-          width: '120px',
-          height: '6px',
-          background: color,
-          borderRadius: '50%',
-          boxShadow: `0 0 15px ${color}, 0 0 5px ${color}`,
-          opacity: 0.8
+          top: 0,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '80px',
+          height: '2px',
+          background: `linear-gradient(90deg, transparent, ${color}, transparent)`,
+          borderRadius: '0 0 4px 4px',
+          opacity: 0.9
         }} />
 
         {emoji && (
           <div style={{
-            fontSize: '28px',
-            marginBottom: '2px',
-            filter: `drop-shadow(0 0 8px ${color}aa)`
+            fontSize: '26px',
+            lineHeight: 1,
+            filter: `drop-shadow(0 0 10px ${color}cc)`
           }}>
             {emoji}
           </div>
         )}
 
         <div style={{
-          fontSize: '11px',
-          fontWeight: 700,
+          fontSize: '13px',
+          fontWeight: 800,
+          color: '#f1f5f9',
+          letterSpacing: '-0.3px',
+          textAlign: 'center',
+          textShadow: '0 2px 6px rgba(0,0,0,0.6)',
+          maxWidth: '180px',
+          lineHeight: 1.2
+        }}>
+          {name}
+        </div>
+        <div style={{
+          fontSize: '9px',
+          fontWeight: 600,
           textTransform: 'uppercase',
           letterSpacing: '2px',
           color: color,
-          textShadow: `0 0 8px ${color}88`
+          opacity: 0.8
         }}>
           Terminal Hub
-        </div>
-
-        <div style={{
-          color: '#f1f5f9',
-          fontWeight: 800,
-          fontSize: '18px',
-          letterSpacing: '-0.5px',
-          textAlign: 'center',
-          textShadow: '0 2px 4px rgba(0,0,0,0.5)'
-        }}>
-          {name}
         </div>
       </div>
     </div>
