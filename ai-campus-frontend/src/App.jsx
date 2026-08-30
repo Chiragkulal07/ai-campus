@@ -94,7 +94,7 @@ function App() {
   }, [token]);
 
   useEffect(() => {
-    if (!me) return;
+    if (!token || !me || !me.id) return;
     const socket = io(SOCKET_URL);
     socketRef.current = socket;
     socket.on('connect', () => {
@@ -108,9 +108,11 @@ function App() {
     socket.on('player-left', (id) => setPlayers(prev => prev.filter(p => p.id !== id)));
     return () => {
       setSocketReady(false);
+      setMyPlayerId(null);
+      setPlayers([]);
       socket.disconnect();
     };
-  }, [me]);
+  }, [token, me?.id]);
 
   const sendMoveInput = () => {
     if (!socketRef.current) return;
@@ -137,7 +139,24 @@ function App() {
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
-  }, [me]);
+  }, [token]);
+
+  useEffect(() => {
+    const resetMovement = () => {
+      heldKeys.current = { up: false, down: false, left: false, right: false };
+      sendMoveInput();
+    };
+
+    window.addEventListener('blur', resetMovement);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) resetMovement();
+    });
+
+    return () => {
+      window.removeEventListener('blur', resetMovement);
+      document.removeEventListener('visibilitychange', resetMovement);
+    };
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('token');

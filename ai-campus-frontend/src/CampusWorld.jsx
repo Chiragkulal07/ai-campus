@@ -39,11 +39,13 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
   };
 
   const makeBtn = (key, label) => ({
+    type: 'button',
     onMouseDown:  () => { heldKeys.current[key] = true;  sendMoveInput(); },
     onMouseUp:    () => { heldKeys.current[key] = false; sendMoveInput(); },
     onMouseLeave: () => { heldKeys.current[key] = false; sendMoveInput(); },
     onTouchStart: (e) => { e.preventDefault(); heldKeys.current[key] = true;  sendMoveInput(); },
     onTouchEnd:   () => { heldKeys.current[key] = false; sendMoveInput(); },
+    onTouchCancel: () => { heldKeys.current[key] = false; sendMoveInput(); },
     style: btnBase,
     children: label,
   });
@@ -223,6 +225,7 @@ function Building({ id, x, y, name, color, playerX, playerY, onEnter, emoji }) {
             }}
           >
             <button
+              type="button"
               onClick={() => onEnter(id, name)}
               style={{
                 padding: '9px 22px',

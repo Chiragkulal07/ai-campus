@@ -36,6 +36,7 @@ function AvatarPicker({ token, currentColor, onUpdated }) {
         {COLORS.map(({ value }) => (
           <button
             key={value}
+            type="button"
             title={value}
             onClick={() => handlePick(value)}
             style={{
