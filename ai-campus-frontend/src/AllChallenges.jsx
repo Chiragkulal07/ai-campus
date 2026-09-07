@@ -4,7 +4,6 @@ import { API_URL, SOCKET_URL } from './config';
 
 const BUILDING_META = {
   CODING_LAB: { icon: '💻', name: 'Coding Lab', accent: '#6366f1' },
-  INTERVIEW_HALL: { icon: '🎤', name: 'Interview Hall', accent: '#f59e0b' },
   LIBRARY: { icon: '📚', name: 'Library', accent: '#10b981' },
   EVENT_HALL: { icon: '🎉', name: 'Event Hall', accent: '#ec4899' },
   gaminglab: { icon: '🕹️', name: 'Gaming Lab', accent: '#3b82f6' }

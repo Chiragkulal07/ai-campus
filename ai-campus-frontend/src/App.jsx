@@ -13,7 +13,6 @@ import GamingLab from './GamingLab';
 import Battlefield from './Battlefield';
 import SummaryGrid from './SummaryGrid';
 import SummaryDetail from './SummaryDetail';
-import InterviewHall from './InterviewHall';
 import { API_URL, SOCKET_URL } from './config';
 
 const NAV_TABS = [
@@ -30,11 +29,6 @@ const getCategoryOptionsFor = (buildingId) => {
         { value: 'MCQ_SPRINT', label: 'MCQ Sprint' },
         { value: 'DSA_BATTLE', label: 'DSA Battle' },
         { value: 'SQL_CHALLENGE', label: 'SQL Challenge' },
-      ];
-    case 'INTERVIEW_HALL':
-      return [
-        { value: 'MOCK_HR', label: 'Mock HR Interview' },
-        { value: 'TECHNICAL_INTERVIEW', label: 'Technical Interview' },
       ];
     case 'LIBRARY':
       return [{ value: 'DOCUMENT_QUIZ', label: 'Document Quiz' }];
@@ -78,8 +72,7 @@ function App() {
       .then(res => res.ok ? res.json() : Promise.reject())
       .then(data => {
         if (Array.isArray(data)) {
-          // Filter to only display Interview Hall
-          setLabs(data.filter(lab => lab.id === 'INTERVIEW_HALL'));
+          setLabs(data);
         }
       })
       .catch(() => { });
@@ -511,14 +504,7 @@ function App() {
             />
 
             {/* Lab modal overlaid on campus */}
-                        {/* Lab modal overlaid on campus — Interview Hall gets its own dedicated flow */}
-            {view === 'lab' && activeBuildingId === 'INTERVIEW_HALL' && (
-              <InterviewHall
-                token={token}
-                onBackToMap={handleBackToMap}
-              />
-            )}
-            {view === 'lab' && activeBuildingId !== 'INTERVIEW_HALL' && (
+            {view === 'lab' && (
               <Lab
                 token={token}
                 buildingId={activeBuildingId}

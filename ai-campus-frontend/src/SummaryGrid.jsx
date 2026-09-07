@@ -3,7 +3,6 @@ import { API_URL } from './config';
 
 const BUILDING_META = {
   CODING_LAB: { icon: '💻', accent: '#6366f1', label: 'Coding Lab' },
-  INTERVIEW_HALL: { icon: '🎤', accent: '#f59e0b', label: 'Interview Hall' },
   LIBRARY: { icon: '📚', accent: '#10b981', label: 'Library' },
   EVENT_HALL: { icon: '🎉', accent: '#ec4899', label: 'Event Hall' },
 };
@@ -181,4 +180,4 @@ function SummaryGrid({ token, onOpenDetail, onBack }) {
 
 export default SummaryGrid;
 
-
+

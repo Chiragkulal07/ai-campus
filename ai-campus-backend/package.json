@@ -12,23 +12,14 @@
   "dependencies": {
     "@google/genai": "^2.17.1",
     "@google/generative-ai": "^0.24.1",
-    "@langchain/core": "^1.2.9",
-    "@langchain/google-genai": "^2.3.0",
-    "@langchain/langgraph": "^1.4.12",
-    "@langchain/mistralai": "^1.2.0",
-    "@langchain/openai": "^1.5.10",
-    "@langchain/tavily": "^1.2.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
-    "mammoth": "^1.12.1",
     "mongoose": "^9.9.1",
-    "multer": "^2.2.0",
     "openai": "^7.5.0",
-    "pdf-parse": "^1.1.1",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3"
   }

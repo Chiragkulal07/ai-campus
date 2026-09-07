@@ -1,6 +1,5 @@
 const LAB_META = {
   CODING_LAB:     { icon: '💻', accent: '#6366f1', description: 'Create and join live coding challenges, MCQ sprints, and DSA battles.' },
-  INTERVIEW_HALL: { icon: '🎤', accent: '#f59e0b', description: 'Conduct mock interviews and technical Q&As with voice-chat support.' },
   LIBRARY:        { icon: '📚', accent: '#10b981', description: 'Access document-based quizzes and study resources with friends.' },
   EVENT_HALL:     { icon: '🎉', accent: '#ec4899', description: 'Join and create online hackathons, events, and developer gatherings.' },
 };
@@ -38,7 +37,6 @@ function Labs({ onSelectLab, labs }) {
         maxWidth: '800px',
         margin: '0 auto'
       }}>
-        {/* Render Interview Hall */}
         {labs.map((lab) => {
           const meta = LAB_META[lab.id] || { icon: '🏛️', accent: '#f59e0b', description: lab.description };
           return (

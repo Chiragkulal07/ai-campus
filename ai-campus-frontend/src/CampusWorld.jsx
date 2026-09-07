@@ -108,11 +108,8 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
 
         {/* Buildings dynamically generated from backend labs list */}
         {labs.map(lab => {
-          const isInterview = lab.id === 'INTERVIEW_HALL';
           const xVal = lab.mapConfig?.x ?? 800;
           const yVal = lab.mapConfig?.y ?? 300;
-          const colorVal = isInterview ? '#f59e0b' : (lab.mapConfig?.color ?? '#8b5cf6');
-          const emojiVal = isInterview ? '🎤' : '🏛️';
           return (
             <Building
               key={lab.id}
@@ -120,11 +117,11 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
               x={xVal}
               y={yVal}
               name={lab.name}
-              color={colorVal}
+              color={lab.mapConfig?.color ?? '#8b5cf6'}
               playerX={myPlayer.x}
               playerY={myPlayer.y}
               onEnter={onEnterBuilding}
-              emoji={emojiVal}
+              emoji="🏛️"
             />
           );
         })}

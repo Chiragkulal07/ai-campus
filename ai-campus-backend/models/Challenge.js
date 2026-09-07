@@ -28,7 +28,7 @@ const challengeSchema = new mongoose.Schema({
   name: { type: String, required: true },
   building: {
     type: String,
-    enum: ['CODING_LAB', 'INTERVIEW_HALL', 'LIBRARY', 'EVENT_HALL'],
+    enum: ['CODING_LAB', 'LIBRARY', 'EVENT_HALL'],
     required: true
   },
   category: { type: String, required: true }, // e.g. "MCQ_SPRINT", "DSA_BATTLE"

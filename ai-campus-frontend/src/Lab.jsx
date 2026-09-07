@@ -4,7 +4,6 @@ import { API_URL, SOCKET_URL } from './config';
 
 const LAB_ICONS = {
   CODING_LAB: '💻',
-  INTERVIEW_HALL: '🎤',
   LIBRARY: '📚',
   EVENT_HALL: '🎉',
 };

@@ -31,7 +31,7 @@ router.get('/me/games', requireAuth, async (req, res) => {
 });
 
 router.get('/me/summary', requireAuth, async (req, res) => {
-  const buildings = ['CODING_LAB', 'INTERVIEW_HALL', 'LIBRARY', 'EVENT_HALL'];
+  const buildings = ['CODING_LAB', 'LIBRARY', 'EVENT_HALL'];
   const labSummaries = [];
 
   for (const building of buildings) {
