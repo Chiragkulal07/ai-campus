@@ -1,12 +1,6 @@
 import { useEffect, useState } from 'react';
 import { API_URL } from './config';
 
-const BUILDING_META = {
-  CODING_LAB: { icon: '💻', accent: '#6366f1', label: 'Coding Lab' },
-  LIBRARY: { icon: '📚', accent: '#10b981', label: 'Library' },
-  EVENT_HALL: { icon: '🎉', accent: '#ec4899', label: 'Event Hall' },
-};
-
 function SummaryGrid({ token, onOpenDetail, onBack }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -24,8 +18,8 @@ function SummaryGrid({ token, onOpenDetail, onBack }) {
   if (loading) {
     return (
       <div style={{ padding: '80px', textAlign: 'center' }}>
-        <div style={{ width: '32px', height: '32px', border: '3px solid rgba(255,255,255,0.07)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'sg-spin 0.8s linear infinite', margin: '0 auto 16px' }} />
-        <p style={{ color: '#475569', fontSize: '13px' }}>Loading your summary…</p>
+        <div style={{ width: '32px', height: '32px', border: '3px solid rgba(255,255,255,0.07)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'sg-spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+        <p style={{ color: '#475569', fontSize: '13px' }}>Loading your combat record…</p>
         <style>{`@keyframes sg-spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -38,6 +32,10 @@ function SummaryGrid({ token, onOpenDetail, onBack }) {
       </div>
     );
   }
+
+  const matches = summary?.gamingLab?.totalMatches || 0;
+  const kills = summary?.gamingLab?.totalKills || 0;
+  const avgKills = matches > 0 ? (kills / matches).toFixed(1) : '0.0';
 
   return (
     <div style={{ maxWidth: '960px', margin: '0 auto', padding: '40px 24px', fontFamily: "'Outfit', sans-serif" }}>
@@ -61,116 +59,96 @@ function SummaryGrid({ token, onOpenDetail, onBack }) {
       {/* Header */}
       <div style={{ marginBottom: '36px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-          <div style={{ width: '3px', height: '22px', background: 'linear-gradient(180deg, #6366f1, #8b5cf6)', borderRadius: '2px' }} />
+          <div style={{ width: '3px', height: '22px', background: 'linear-gradient(180deg, #3b82f6, #60a5fa)', borderRadius: '2px' }} />
           <h2 style={{
             color: '#f8fafc', fontSize: '26px', fontWeight: 900, letterSpacing: '-0.8px',
           }}>
-            Your Campus Summary
+            Combat Career & Battlefield Summary
           </h2>
         </div>
-        <p style={{ color: '#475569', fontSize: '13.5px', paddingLeft: '13px' }}>
-          Click any card to see individual matches and who you played against.
+        <p style={{ color: '#64748b', fontSize: '13.5px', paddingLeft: '13px' }}>
+          Overview of all live laser-combat engagements and tournament standings in the Gaming Lab.
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '18px' }}>
-        {summary.labs.map((lab) => {
-          const meta = BUILDING_META[lab.buildingId] || { icon: '🏛️', accent: '#6366f1', label: lab.buildingId };
-          return (
-            <div
-              key={lab.buildingId}
-              onClick={() => onOpenDetail('challenge', lab.buildingId, meta.label)}
-              style={{
-                background: 'linear-gradient(135deg, rgba(20,30,50,0.6), rgba(13,20,36,0.5))',
-                border: '1px solid rgba(255,255,255,0.06)',
-                borderRadius: '20px',
-                padding: '24px',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '16px',
-                transition: 'all 0.22s cubic-bezier(0.4,0,0.2,1)',
-                backdropFilter: 'blur(12px)',
-                position: 'relative', overflow: 'hidden',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = meta.accent + '88';
-                e.currentTarget.style.transform = 'translateY(-4px)';
-                e.currentTarget.style.boxShadow = `0 20px 40px ${meta.accent}14`;
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)';
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            >
-              {/* Top accent line */}
-              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: `linear-gradient(90deg, ${meta.accent}, ${meta.accent}55)`, borderRadius: '20px 20px 0 0' }} />
-              <div style={{
-                width: '48px', height: '48px', borderRadius: '14px',
-                background: meta.accent + '15', border: `1.5px solid ${meta.accent}33`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px',
-                boxShadow: `0 0 20px ${meta.accent}12`
-              }}>{meta.icon}</div>
-              <div style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '15px', letterSpacing: '-0.2px' }}>{meta.label}</div>
-              <div style={{ display: 'flex', gap: '20px' }}>
-                <div>
-                  <div style={{ color: meta.accent, fontWeight: 800, fontSize: '22px', letterSpacing: '-0.5px' }}>{lab.totalMatches}</div>
-                  <div style={{ color: '#475569', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Quizzes</div>
-                </div>
-                <div>
-                  <div style={{ color: meta.accent, fontWeight: 800, fontSize: '22px', letterSpacing: '-0.5px' }}>{lab.totalCorrect}</div>
-                  <div style={{ color: '#475569', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Correct</div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Gaming Lab card */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+        {/* Gaming Lab Featured Card */}
         <div
           onClick={() => onOpenDetail('game', null, 'Gaming Lab')}
           style={{
-            background: 'linear-gradient(135deg, rgba(20,30,50,0.6), rgba(13,20,36,0.5))',
-            border: '1px solid rgba(255,255,255,0.06)',
-            borderRadius: '20px',
-            padding: '24px',
+            background: 'linear-gradient(135deg, rgba(20,30,50,0.7), rgba(13,20,36,0.6))',
+            border: '1px solid rgba(59,130,246,0.25)',
+            borderRadius: '24px',
+            padding: '28px',
             cursor: 'pointer',
             display: 'flex',
             flexDirection: 'column',
-            gap: '16px',
-            transition: 'all 0.22s cubic-bezier(0.4,0,0.2,1)',
-            backdropFilter: 'blur(12px)',
+            gap: '20px',
+            transition: 'all 0.25s cubic-bezier(0.4,0,0.2,1)',
+            backdropFilter: 'blur(16px)',
             position: 'relative', overflow: 'hidden',
+            boxShadow: '0 12px 36px rgba(0,0,0,0.3), 0 0 20px rgba(59,130,246,0.08)'
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = 'rgba(59,130,246,0.5)';
+            e.currentTarget.style.borderColor = 'rgba(59,130,246,0.6)';
             e.currentTarget.style.transform = 'translateY(-4px)';
-            e.currentTarget.style.boxShadow = '0 20px 40px rgba(59,130,246,0.1)';
+            e.currentTarget.style.boxShadow = '0 20px 45px rgba(59,130,246,0.2)';
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)';
+            e.currentTarget.style.borderColor = 'rgba(59,130,246,0.25)';
             e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = 'none';
+            e.currentTarget.style.boxShadow = '0 12px 36px rgba(0,0,0,0.3), 0 0 20px rgba(59,130,246,0.08)';
           }}
         >
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, #3b82f6, #60a5fa55)', borderRadius: '20px 20px 0 0' }} />
-          <div style={{
-            width: '48px', height: '48px', borderRadius: '14px',
-            background: 'rgba(59,130,246,0.15)', border: '1.5px solid rgba(59,130,246,0.33)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px',
-            boxShadow: '0 0 20px rgba(59,130,246,0.1)'
-          }}>🔫</div>
-          <div style={{ color: '#f1f5f9', fontWeight: 700, fontSize: '15px', letterSpacing: '-0.2px' }}>Gaming Lab</div>
-          <div style={{ display: 'flex', gap: '20px' }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '3px', background: 'linear-gradient(90deg, #3b82f6, #60a5fa)', borderRadius: '24px 24px 0 0' }} />
+          
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{
+              width: '52px', height: '52px', borderRadius: '16px',
+              background: 'rgba(59,130,246,0.12)', border: '1.5px solid rgba(59,130,246,0.3)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px',
+              boxShadow: '0 0 20px rgba(59,130,246,0.15)'
+            }}>🕹️</div>
+
+            <span style={{
+              fontSize: '11px', fontWeight: 700, color: '#3b82f6',
+              background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)',
+              padding: '4px 10px', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px'
+            }}>
+              Active Arena
+            </span>
+          </div>
+
+          <div>
+            <div style={{ color: '#f1f5f9', fontWeight: 800, fontSize: '18px', letterSpacing: '-0.3px', marginBottom: '4px' }}>
+              Gaming Lab Battlefield
+            </div>
+            <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>
+              Real-time authoritative combat simulation arena.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
             <div>
-              <div style={{ color: '#3b82f6', fontWeight: 800, fontSize: '22px', letterSpacing: '-0.5px' }}>{summary.gamingLab.totalMatches}</div>
+              <div style={{ color: '#3b82f6', fontWeight: 900, fontSize: '24px', letterSpacing: '-0.5px' }}>{matches}</div>
               <div style={{ color: '#475569', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Matches</div>
             </div>
             <div>
-              <div style={{ color: '#3b82f6', fontWeight: 800, fontSize: '22px', letterSpacing: '-0.5px' }}>{summary.gamingLab.totalKills}</div>
-              <div style={{ color: '#475569', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Kills</div>
+              <div style={{ color: '#60a5fa', fontWeight: 900, fontSize: '24px', letterSpacing: '-0.5px' }}>{kills}</div>
+              <div style={{ color: '#475569', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Kills</div>
             </div>
+            <div>
+              <div style={{ color: '#38bdf8', fontWeight: 900, fontSize: '24px', letterSpacing: '-0.5px' }}>{avgKills}</div>
+              <div style={{ color: '#475569', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Kills / Match</div>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            color: '#3b82f6', fontSize: '13px', fontWeight: 700, paddingTop: '4px'
+          }}>
+            <span>View Full Match History</span>
+            <span style={{ fontSize: '16px' }}>→</span>
           </div>
         </div>
       </div>
@@ -179,5 +157,3 @@ function SummaryGrid({ token, onOpenDetail, onBack }) {
 }
 
 export default SummaryGrid;
-
-

@@ -2,72 +2,79 @@ import { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import { API_URL, SOCKET_URL } from './config';
 
-const BUILDING_META = {
-  CODING_LAB: { icon: '💻', accent: '#6366f1' },
-  LIBRARY: { icon: '📚', accent: '#10b981' },
-  EVENT_HALL: { icon: '🎉', accent: '#ec4899' },
-};
-
-const DIFF_PILL = {
-  EASY: { bg: 'rgba(16,185,129,0.12)', color: '#34d399', border: 'rgba(16,185,129,0.2)', label: 'Easy' },
-  MEDIUM: { bg: 'rgba(245,158,11,0.12)', color: '#fbbf24', border: 'rgba(245,158,11,0.2)', label: 'Medium' },
-  HARD: { bg: 'rgba(239,68,68,0.12)', color: '#f87171', border: 'rgba(239,68,68,0.2)', label: 'Hard' },
-};
-
-function Reception({ me, token, onEnterBuilding, onEnterChallenge, onOpenSummary }) {
-  const [challenges, setChallenges] = useState([]);
+function Reception({ me, token, onEnterGamingLab, onEnterBattlefield, onOpenSummary }) {
+  const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [joiningId, setJoiningId] = useState(null);
+  const [gameStats, setGameStats] = useState({ totalMatches: 0, totalKills: 0 });
 
-  const [totalCorrectAnswers, setTotalCorrectAnswers] = useState(me.profile.totalCorrectAnswers || 0);
-  const [justGained, setJustGained] = useState(null);
-
-  const load = () => {
+  const loadGames = () => {
     setLoading(true);
-    fetch(`${API_URL}/challenges`)
+    fetch(`${API_URL}/games`)
       .then(r => r.json())
-      .then(data => { setChallenges(Array.isArray(data) ? data : []); setLoading(false); })
-      .catch(() => { setError('Could not reach server'); setLoading(false); });
+      .then(data => {
+        setGames(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch(() => {
+        setError('Could not reach server');
+        setLoading(false);
+      });
   };
 
   useEffect(() => {
-    load();
+    loadGames();
+
+    // Fetch user combat summary stats
+    fetch(`${API_URL}/profile/me/summary`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data?.gamingLab) {
+          setGameStats(data.gamingLab);
+        }
+      })
+      .catch(() => {});
+
     const socket = io(SOCKET_URL);
-
-    socket.on('connect', () => {
-      socket.emit('user:register', { token });
-    });
-
-    socket.on('challenge:created', (c) => setChallenges(prev => [c, ...prev]));
-
-    socket.on('profile:stats-updated', (update) => {
-      setTotalCorrectAnswers(update.totalCorrectAnswers);
-      if (update.correctAnswers > 0) {
-        setJustGained(update.correctAnswers);
-        setTimeout(() => setJustGained(null), 4000);
-      }
+    socket.on('game:created', (newGame) => {
+      setGames(prev => [newGame, ...prev]);
     });
 
     return () => socket.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  const handleJoin = async (challengeId) => {
-    setJoiningId(challengeId);
+  const handleJoinGame = async (gameId) => {
+    setJoiningId(gameId);
     setError('');
-    const res = await fetch(`${API_URL}/challenges/${challengeId}/join`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const data = await res.json();
-    setJoiningId(null);
-    if (!res.ok) {
-      if (data.error === 'you already joined this challenge') { onEnterChallenge(challengeId); return; }
-      setError(data.error || 'Could not join');
-      return;
+
+    try {
+      const res = await fetch(`${API_URL}/games/${gameId}/join`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+      const data = await res.json();
+      setJoiningId(null);
+
+      if (!res.ok) {
+        if (data.error === 'you already joined this game') {
+          onEnterBattlefield(gameId);
+          return;
+        }
+        setError(data.error || 'Could not join match');
+        return;
+      }
+
+      onEnterBattlefield(gameId);
+    } catch {
+      setJoiningId(null);
+      setError('Network error joining match');
     }
-    onEnterChallenge(challengeId);
   };
 
   return (
@@ -76,20 +83,19 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge, onOpenSummary
         @keyframes rx-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.85); } }
         @keyframes rx-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
         @keyframes rx-fadein { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes rx-floatfade { 0% { opacity: 0; transform: translateY(4px); } 15% { opacity: 1; transform: translateY(0); } 80% { opacity: 1; } 100% { opacity: 0; } }
       `}</style>
 
       {/* Hero Card */}
       <div style={{
-        background: 'linear-gradient(135deg, rgba(99,102,241,0.1) 0%, rgba(139,92,246,0.06) 60%, rgba(16,185,129,0.04) 100%)',
-        border: '1px solid rgba(99,102,241,0.18)',
+        background: 'linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(99,102,241,0.08) 60%, rgba(16,185,129,0.04) 100%)',
+        border: '1px solid rgba(59,130,246,0.22)',
         borderRadius: '24px',
         padding: '28px 32px',
         marginBottom: '36px',
         display: 'flex',
         alignItems: 'center',
         gap: '24px',
-        boxShadow: '0 20px 50px rgba(0,0,0,0.35), inset 0 0 40px rgba(99,102,241,0.04)',
+        boxShadow: '0 20px 50px rgba(0,0,0,0.35), inset 0 0 40px rgba(59,130,246,0.04)',
         position: 'relative', overflow: 'hidden',
         animation: 'rx-fadein 0.5s ease',
       }}>
@@ -97,40 +103,30 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge, onOpenSummary
         <div style={{
           position: 'absolute', top: '-60px', right: '-60px',
           width: '200px', height: '200px', borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(99,102,241,0.12), transparent 70%)',
+          background: 'radial-gradient(circle, rgba(59,130,246,0.15), transparent 70%)',
           pointerEvents: 'none',
         }} />
 
         <div style={{
           width: '68px', height: '68px', borderRadius: '50%', flexShrink: 0,
-          background: `radial-gradient(circle at 35% 35%, ${me.avatar.bodyColor || '#6366f1'}, ${me.avatar.bodyColor || '#4338ca'})`,
+          background: `radial-gradient(circle at 35% 35%, ${me.avatar?.bodyColor || '#3b82f6'}, #1d4ed8)`,
           border: '2px solid rgba(255,255,255,0.15)',
-          boxShadow: `0 0 24px ${me.avatar.bodyColor || '#6366f1'}55, 0 0 0 6px rgba(99,102,241,0.1)`,
+          boxShadow: `0 0 24px ${me.avatar?.bodyColor || '#3b82f6'}55, 0 0 0 6px rgba(59,130,246,0.1)`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '26px', fontWeight: 900, color: 'white',
           animation: 'rx-float 3s ease-in-out infinite',
         }}>
           {me.displayName[0].toUpperCase()}
         </div>
+
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
             <h2 style={{ color: '#f8fafc', fontSize: '22px', fontWeight: 800, letterSpacing: '-0.5px' }}>
               Welcome back, {me.displayName} 👋
             </h2>
-            {justGained !== null && (
-              <span style={{
-                color: '#34d399', fontSize: '13px', fontWeight: 700,
-                animation: 'rx-floatfade 4s ease-out forwards',
-                display: 'flex', alignItems: 'center', gap: '4px',
-                background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)',
-                padding: '3px 10px', borderRadius: '20px',
-              }}>
-                ✨ +{justGained} XP
-              </span>
-            )}
           </div>
           <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '18px' }}>
-            🏆 {me.profile.challengesWon || 0} Wins &nbsp;·&nbsp; 🎮 {me.profile.challengesJoined || 0} Matches
+            🎖️ Level {me.profile?.level || 1} Combatant &nbsp;·&nbsp; 🕹️ {gameStats.totalMatches} Matches Fought
           </p>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -140,81 +136,96 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge, onOpenSummary
               borderRadius: '12px', padding: '8px 14px',
             }}>
               <span style={{ fontSize: '16px' }}>🎯</span>
-              <span style={{ color: '#fff', fontWeight: 800, fontSize: '16px' }}>{totalCorrectAnswers}</span>
-              <span style={{ color: '#64748b', fontSize: '12px' }}>Correct Answers</span>
+              <span style={{ color: '#38bdf8', fontWeight: 800, fontSize: '16px' }}>{gameStats.totalKills}</span>
+              <span style={{ color: '#64748b', fontSize: '12px' }}>Total Kills</span>
             </div>
+
             <button
               onClick={onOpenSummary}
               style={{
-                background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.12))',
-                border: '1px solid rgba(99,102,241,0.28)',
-                borderRadius: '12px', padding: '8px 16px', color: '#a5b4fc',
+                background: 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(99,102,241,0.12))',
+                border: '1px solid rgba(59,130,246,0.3)',
+                borderRadius: '12px', padding: '8px 16px', color: '#93c5fd',
                 fontWeight: 700, fontSize: '13px', cursor: 'pointer',
                 transition: 'all 0.18s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.5)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(99,102,241,0.28)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(59,130,246,0.6)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(59,130,246,0.3)'; e.currentTarget.style.transform = 'translateY(0)'; }}
             >
-              📊 My Summary
+              📊 Combat Career Summary
             </button>
           </div>
         </div>
       </div>
 
-      {/* Buildings Grid */}
+      {/* Featured Campus Sector */}
       <div style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <div style={{ width: '3px', height: '16px', background: 'linear-gradient(180deg, #6366f1, #8b5cf6)', borderRadius: '2px' }} />
+        <div style={{ width: '3px', height: '16px', background: 'linear-gradient(180deg, #3b82f6, #60a5fa)', borderRadius: '2px' }} />
         <h3 style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px' }}>
-          Campus Sectors
+          Active Campus Sector
         </h3>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '44px' }}>
-        {Object.entries(BUILDING_META).map(([id, meta]) => (
-          <div
-            key={id}
-            onClick={() => onEnterBuilding(id, id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}
-            style={{
-              background: 'linear-gradient(135deg, rgba(20,30,50,0.6), rgba(13,20,36,0.5))',
-              border: `1px solid rgba(255,255,255,0.06)`,
-              borderRadius: '18px',
-              padding: '20px',
-              cursor: 'pointer',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '14px',
-              transition: 'all 0.22s cubic-bezier(0.4,0,0.2,1)',
-              backdropFilter: 'blur(12px)',
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.borderColor = meta.accent;
-              e.currentTarget.style.boxShadow = `0 16px 40px ${meta.accent}1a, 0 0 0 1px ${meta.accent}22`;
-              e.currentTarget.style.transform = 'translateY(-3px)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)';
-              e.currentTarget.style.boxShadow = 'none';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <div style={{
-              width: '44px', height: '44px', borderRadius: '12px',
-              background: meta.accent + '15',
-              border: `1.5px solid ${meta.accent}30`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px',
-              boxShadow: `0 0 20px ${meta.accent}10`,
-            }}>{meta.icon}</div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '14px', letterSpacing: '-0.2px' }}>
-                {id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+      <div style={{ marginBottom: '44px' }}>
+        <div
+          onClick={onEnterGamingLab}
+          style={{
+            background: 'linear-gradient(135deg, rgba(20,30,50,0.7), rgba(13,20,36,0.6))',
+            border: '1px solid rgba(59,130,246,0.25)',
+            borderRadius: '20px',
+            padding: '24px 28px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '20px',
+            transition: 'all 0.22s cubic-bezier(0.4,0,0.2,1)',
+            backdropFilter: 'blur(12px)',
+            boxShadow: '0 12px 30px rgba(0,0,0,0.25)'
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.borderColor = '#3b82f6';
+            e.currentTarget.style.boxShadow = '0 16px 40px rgba(59,130,246,0.18), 0 0 0 1px rgba(59,130,246,0.3)';
+            e.currentTarget.style.transform = 'translateY(-3px)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.borderColor = 'rgba(59,130,246,0.25)';
+            e.currentTarget.style.boxShadow = '0 12px 30px rgba(0,0,0,0.25)';
+            e.currentTarget.style.transform = 'translateY(0)';
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
+            <div style={{
+              width: '56px', height: '56px', borderRadius: '16px',
+              background: 'rgba(59,130,246,0.12)',
+              border: '1.5px solid rgba(59,130,246,0.3)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px',
+              boxShadow: '0 0 20px rgba(59,130,246,0.12)',
+            }}>🕹️</div>
+
+            <div>
+              <div style={{ color: '#f8fafc', fontWeight: 800, fontSize: '18px', letterSpacing: '-0.3px', marginBottom: '4px' }}>
+                Gaming Lab — Combat Simulation Arena
               </div>
-              <div style={{
-                color: meta.accent, fontSize: '18px', fontWeight: 700,
-                transition: 'transform 0.2s',
-              }}>→</div>
+              <p style={{ color: '#94a3b8', fontSize: '13.5px', margin: 0 }}>
+                Join or host multiplayer 2D laser-combat matches with server-side lag compensation and live rankings.
+              </p>
             </div>
           </div>
-        ))}
+
+          <button
+            style={{
+              padding: '10px 22px', borderRadius: '12px', border: 'none',
+              background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+              color: 'white', fontWeight: 700, fontSize: '13px',
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+              boxShadow: '0 4px 16px rgba(59,130,246,0.35)',
+              pointerEvents: 'none'
+            }}
+          >
+            Enter Arena <span>→</span>
+          </button>
+        </div>
       </div>
 
       {/* Live activity */}
@@ -223,9 +234,9 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge, onOpenSummary
           <div style={{ width: '3px', height: '16px', background: 'linear-gradient(180deg, #10b981, #059669)', borderRadius: '2px' }} />
           <div>
             <h3 style={{ color: '#94a3b8', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1.5px', marginBottom: '2px' }}>
-              Live Activity
+              Live Arena Matches
             </h3>
-            <p style={{ color: '#334155', fontSize: '12px' }}>Active challenges on campus</p>
+            <p style={{ color: '#334155', fontSize: '12px' }}>Open battlefield lobbies ready to fight</p>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '7px', background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.18)', padding: '5px 12px', borderRadius: '20px' }}>
@@ -243,30 +254,38 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge, onOpenSummary
 
       {loading && (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0', color: '#475569', fontSize: '13.5px', gap: '10px', alignItems: 'center' }}>
-          <div style={{ width: '18px', height: '18px', border: '2px solid rgba(255,255,255,0.07)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'rx-pulse 0.9s linear infinite' }} />
-          Loading lobby events…
+          <div style={{ width: '18px', height: '18px', border: '2px solid rgba(255,255,255,0.07)', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'rx-pulse 0.9s linear infinite' }} />
+          Loading active lobbies…
         </div>
       )}
 
-      {!loading && challenges.length === 0 && (
+      {!loading && games.length === 0 && (
         <div style={{
           textAlign: 'center', padding: '60px 24px',
           background: 'rgba(13,20,36,0.3)', border: '1.5px dashed rgba(255,255,255,0.06)',
           borderRadius: '20px',
         }}>
-          <div style={{ fontSize: '40px', marginBottom: '14px' }}>🏕️</div>
-          <h4 style={{ color: '#64748b', fontSize: '15px', fontWeight: 700, marginBottom: '6px' }}>Campus is quiet right now</h4>
-          <p style={{ color: '#334155', fontSize: '13px' }}>No active challenges open. Enter a building to launch one!</p>
+          <div style={{ fontSize: '40px', marginBottom: '14px' }}>🕹️</div>
+          <h4 style={{ color: '#64748b', fontSize: '15px', fontWeight: 700, marginBottom: '6px' }}>No active battle lobbies right now</h4>
+          <p style={{ color: '#334155', fontSize: '13px', marginBottom: '16px' }}>Enter the Gaming Lab to create and host a new match!</p>
+          <button
+            onClick={onEnterGamingLab}
+            style={{
+              padding: '9px 18px', borderRadius: '10px', border: '1px solid rgba(59,130,246,0.3)',
+              background: 'rgba(59,130,246,0.12)', color: '#93c5fd', fontSize: '13px', fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            Open Gaming Lab Lobby →
+          </button>
         </div>
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {challenges.map(c => {
-          const meta = BUILDING_META[c.building] || { icon: '🏛️', accent: '#6366f1' };
-          const diff = DIFF_PILL[c.difficulty] || DIFF_PILL.EASY;
-          const isFull = (c.currentParticipants ?? 0) >= c.maxParticipants;
+        {games.map(g => {
+          const isFull = (g.currentParticipants ?? 0) >= g.maxPlayers;
           return (
-            <div key={c.id} style={{
+            <div key={g.id} style={{
               background: 'linear-gradient(135deg, rgba(20,30,50,0.5), rgba(13,20,36,0.45))',
               border: '1px solid rgba(255,255,255,0.06)',
               borderRadius: '16px',
@@ -279,47 +298,48 @@ function Reception({ me, token, onEnterBuilding, onEnterChallenge, onOpenSummary
               transition: 'all 0.18s',
               position: 'relative', overflow: 'hidden',
             }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = `${meta.accent}44`; e.currentTarget.style.transform = 'translateX(2px)'; }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(59,130,246,0.4)'; e.currentTarget.style.transform = 'translateX(2px)'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; e.currentTarget.style.transform = 'translateX(0)'; }}
             >
               {/* Left accent bar */}
               <div style={{
                 position: 'absolute', left: 0, top: 0, bottom: 0, width: '3px',
-                background: isFull ? '#1e293b' : `linear-gradient(180deg, ${meta.accent}, ${meta.accent}88)`,
+                background: isFull ? '#1e293b' : 'linear-gradient(180deg, #3b82f6, #60a5fa)',
                 borderRadius: '16px 0 0 16px',
               }} />
               <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0, paddingLeft: '6px' }}>
                 <span style={{
-                  fontSize: '22px', background: meta.accent + '12', padding: '8px',
-                  borderRadius: '12px', border: `1px solid ${meta.accent}22`,
-                }}>{meta.icon}</span>
+                  fontSize: '22px', background: 'rgba(59,130,246,0.1)', padding: '8px',
+                  borderRadius: '12px', border: '1px solid rgba(59,130,246,0.2)',
+                }}>🕹️</span>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <span style={{ fontWeight: 700, color: '#f1f5f9', fontSize: '14.5px', letterSpacing: '-0.2px' }}>{c.name}</span>
-                    <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '6px', background: diff.bg, color: diff.color, border: `1px solid ${diff.border}`, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      {diff.label}
+                    <span style={{ fontWeight: 700, color: '#f1f5f9', fontSize: '14.5px', letterSpacing: '-0.2px' }}>{g.name}</span>
+                    <span style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '6px', background: 'rgba(59,130,246,0.12)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.25)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      {g.durationSec}s Arena
                     </span>
                   </div>
                   <span style={{ fontSize: '12px', color: '#475569' }}>
-                    {c.category.replace(/_/g, ' ')} &nbsp;·&nbsp; 📋 {c.questionCount} Qs &nbsp;·&nbsp; 👥 {c.currentParticipants ?? 0}/{c.maxParticipants} &nbsp;·&nbsp; <strong style={{ color: '#64748b' }}>{c.creatorName}</strong>
+                    👥 {g.currentParticipants ?? 0}/{g.maxPlayers} Fighters &nbsp;·&nbsp; Host: <strong style={{ color: '#94a3b8' }}>{g.creatorName}</strong>
                   </span>
                 </div>
               </div>
+
               <button
-                onClick={() => handleJoin(c.id)}
-                disabled={isFull || joiningId === c.id}
+                onClick={() => handleJoinGame(g.id)}
+                disabled={isFull || joiningId === g.id}
                 style={{
                   padding: '9px 20px', borderRadius: '10px', border: 'none', flexShrink: 0,
-                  background: isFull ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg, #10b981, #059669)',
+                  background: isFull ? 'rgba(255,255,255,0.04)' : 'linear-gradient(135deg, #3b82f6, #2563eb)',
                   color: isFull ? '#334155' : 'white', fontWeight: 700, fontSize: '13px',
                   cursor: isFull ? 'not-allowed' : 'pointer',
-                  boxShadow: isFull ? 'none' : '0 4px 14px rgba(16,185,129,0.3)',
+                  boxShadow: isFull ? 'none' : '0 4px 14px rgba(59,130,246,0.3)',
                   transition: 'all 0.15s'
                 }}
-                onMouseEnter={e => { if (!isFull && joiningId !== c.id) e.currentTarget.style.transform = 'scale(1.03)'; }}
-                onMouseLeave={e => { if (!isFull && joiningId !== c.id) e.currentTarget.style.transform = 'scale(1)'; }}
+                onMouseEnter={e => { if (!isFull && joiningId !== g.id) e.currentTarget.style.transform = 'scale(1.03)'; }}
+                onMouseLeave={e => { if (!isFull && joiningId !== g.id) e.currentTarget.style.transform = 'scale(1)'; }}
               >
-                {joiningId === c.id ? '…' : isFull ? 'Full' : '⚡ Join'}
+                {joiningId === g.id ? '…' : isFull ? 'Full' : '⚡ Join Battle'}
               </button>
             </div>
           );

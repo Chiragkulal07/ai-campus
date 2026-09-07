@@ -106,26 +106,6 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
           emoji="🕹️"
         />
 
-        {/* Buildings dynamically generated from backend labs list */}
-        {labs.map(lab => {
-          const xVal = lab.mapConfig?.x ?? 800;
-          const yVal = lab.mapConfig?.y ?? 300;
-          return (
-            <Building
-              key={lab.id}
-              id={lab.id}
-              x={xVal}
-              y={yVal}
-              name={lab.name}
-              color={lab.mapConfig?.color ?? '#8b5cf6'}
-              playerX={myPlayer.x}
-              playerY={myPlayer.y}
-              onEnter={onEnterBuilding}
-              emoji="🏛️"
-            />
-          );
-        })}
-
         {/* Players */}
         {players.map((p) => (
           <PlayerCharacter
@@ -388,7 +368,7 @@ function Receptionist({ x, y, playerX, playerY }) {
               &times;
             </button>
             <strong style={{ color: '#818cf8', display: 'block', marginBottom: '4px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px' }}>AI Guide Bot</strong>
-            Welcome to the AI Campus! Walk around to explore, and approach any of the buildings to Plug In. Inside, you can create or join live coding/gaming challenges.
+            Welcome to the AI Campus! Walk around to explore, and approach the Gaming Lab to jump into live laser-combat matches and challenge other players.
             <div style={{
               position: 'absolute',
               bottom: '-8px',

@@ -1,11 +1,9 @@
 const jwt = require('jsonwebtoken');
-const Challenge = require('./models/Challenge');
 const GameMatch = require('./models/GameMatch');
 const User = require('./models/User');
 
 // In-memory states
 const players = {};
-const activeChallenges = {};
 const voiceParticipants = new Set();
 const activeBattles = {};
 const latencyByUserId = {}; // userId -> RTT in ms, updated via ping/pong
@@ -175,67 +173,6 @@ function initSocket(io) {
     delete activeBattles[gameId];
   }
 
-  function startNextQuestion(challengeId) {
-    const state = activeChallenges[challengeId];
-    if (!state) return;
-    if (state.currentQuestionIndex >= state.questions.length) return finishChallenge(challengeId);
-
-    Object.values(state.participants).forEach((p) => { p.answeredThisQuestion = false; });
-    const q = state.questions[state.currentQuestionIndex];
-
-    io.to(`challenge:${challengeId}`).emit('challenge:question', {
-      questionIndex: state.currentQuestionIndex,
-      totalQuestions: state.questions.length,
-      questionText: q.questionText,
-      options: q.options,
-      durationSec: state.durationSec
-    });
-
-    state.timer = setTimeout(() => revealAndAdvance(challengeId), state.durationSec * 1000);
-  }
-
-  function revealAndAdvance(challengeId) {
-    const state = activeChallenges[challengeId];
-    if (!state) return;
-    const q = state.questions[state.currentQuestionIndex];
-
-    const leaderboard = Object.entries(state.participants)
-      .map(([userId, p]) => ({ userId, displayName: p.displayName, score: p.score }))
-      .sort((a, b) => b.score - a.score);
-
-    io.to(`challenge:${challengeId}`).emit('challenge:reveal', {
-      questionIndex: state.currentQuestionIndex,
-      correctIndex: q.correctIndex,
-      leaderboard
-    });
-
-    state.currentQuestionIndex += 1;
-    setTimeout(() => startNextQuestion(challengeId), 3000);
-  }
-
-  async function finishChallenge(challengeId) {
-    const state = activeChallenges[challengeId];
-    if (!state) return;
-
-    const finalLeaderboard = Object.entries(state.participants)
-      .map(([userId, p]) => ({ userId, displayName: p.displayName, score: p.score }))
-      .sort((a, b) => b.score - a.score);
-
-    const challenge = await Challenge.findById(challengeId);
-    if (challenge) {
-      challenge.status = 'COMPLETED';
-      challenge.completedAt = new Date();
-      challenge.participants.forEach((p) => {
-        const result = state.participants[p.userId];
-        if (result) p.score = result.score;
-      });
-      await challenge.save();
-    }
-
-    io.to(`challenge:${challengeId}`).emit('challenge:completed', { leaderboard: finalLeaderboard });
-    delete activeChallenges[challengeId];
-  }
-
   io.on('connection', (socket) => {
     console.log('player joined:', socket.id);
 
@@ -281,99 +218,6 @@ function initSocket(io) {
 
     socket.on('voice:video-stopped', () => {
       socket.broadcast.emit('voice:peer-video-stopped', { peerId: socket.id });
-    });
-
-    // Challenge engine
-    socket.on('challenge:join-room', async ({ challengeId, token }) => {
-      const userId = getUserIdFromToken(token);
-      if (!userId) return socket.emit('challenge:error', { message: 'invalid session' });
-
-      const challenge = await Challenge.findById(challengeId);
-      if (!challenge) return socket.emit('challenge:error', { message: 'challenge not found' });
-
-      socket.join(`challenge:${challengeId}`);
-
-      socket.emit('challenge:room-state', {
-        status: challenge.status,
-        name: challenge.name,
-        questionCount: challenge.questionCount,
-        participants: challenge.participants.map((p) => ({
-          userId: p.userId, displayName: p.displayName, score: p.score
-        }))
-      });
-
-      const liveState = activeChallenges[challengeId];
-      if (liveState && liveState.currentQuestionIndex < liveState.questions.length) {
-        const q = liveState.questions[liveState.currentQuestionIndex];
-        socket.emit('challenge:question', {
-          questionIndex: liveState.currentQuestionIndex,
-          totalQuestions: liveState.questions.length,
-          questionText: q.questionText,
-          options: q.options,
-          durationSec: liveState.durationSec
-        });
-      }
-    });
-
-    socket.on('challenge:start', async ({ challengeId, token }) => {
-      const userId = getUserIdFromToken(token);
-      if (!userId) return socket.emit('challenge:error', { message: 'invalid session' });
-
-      const challenge = await Challenge.findById(challengeId);
-      if (!challenge) return socket.emit('challenge:error', { message: 'challenge not found' });
-
-      if (challenge.creatorId !== userId) {
-        return socket.emit('challenge:error', { message: 'only the creator can start this challenge' });
-      }
-      if (challenge.status !== 'OPEN_FOR_JOIN') {
-        return socket.emit('challenge:error', { message: 'this challenge already started or finished' });
-      }
-
-      challenge.status = 'IN_PROGRESS';
-      challenge.startedAt = new Date();
-      await challenge.save();
-
-      const participantState = {};
-      challenge.participants.forEach((p) => {
-        participantState[p.userId] = { displayName: p.displayName, score: 0, answeredThisQuestion: false };
-      });
-
-      activeChallenges[challengeId] = {
-        questions: challenge.questions,
-        durationSec: challenge.durationPerQuestionSec,
-        currentQuestionIndex: 0,
-        participants: participantState,
-        timer: null
-      };
-
-      io.to(`challenge:${challengeId}`).emit('challenge:started');
-      startNextQuestion(challengeId);
-    });
-
-    socket.on('challenge:answer', async ({ challengeId, questionIndex, selectedIndex, token }) => {
-      const userId = getUserIdFromToken(token);
-      if (!userId) return socket.emit('challenge:error', { message: 'invalid session' });
-
-      const state = activeChallenges[challengeId];
-      if (!state) return socket.emit('challenge:error', { message: 'this challenge is not active' });
-
-      const participant = state.participants[userId];
-      if (!participant) return socket.emit('challenge:error', { message: 'you are not part of this challenge' });
-
-      if (questionIndex !== state.currentQuestionIndex) return;
-      if (participant.answeredThisQuestion) return;
-
-      const correctIndex = state.questions[questionIndex].correctIndex;
-      const isCorrect = selectedIndex === correctIndex;
-
-      if (isCorrect) participant.score += 10;
-      participant.answeredThisQuestion = true;
-
-      const allAnswered = Object.values(state.participants).every((p) => p.answeredThisQuestion);
-      if (allAnswered) {
-        clearTimeout(state.timer);
-        revealAndAdvance(challengeId);
-      }
     });
 
     // Gaming Lab

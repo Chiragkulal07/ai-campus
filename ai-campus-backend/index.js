@@ -40,9 +40,7 @@ app.use((req, res, next) => {
 // Import and use routes
 app.use('/auth', authLimiter, require('./routes/auth')); // stricter limit on top of the general one
 app.use('/games', require('./routes/games'));
-app.use('/challenges', require('./routes/challenges'));
 app.use('/profile', require('./routes/profile'));
-app.use('/labs', require('./routes/labs'));
 
 const PORT = process.env.PORT || 4000;
 httpServer.listen(PORT, () => console.log(`server running on port ${PORT} (REST + Socket.IO combined)`));

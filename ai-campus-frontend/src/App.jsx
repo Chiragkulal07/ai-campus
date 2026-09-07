@@ -2,10 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import Login from './Login';
 import AvatarPicker from './AvatarPicker';
-import Labs from './Labs';
-import Lab from './Lab';
-import AllChallenges from './AllChallenges';
-import ChallengeRoom from './ChallengeRoom';
 import Reception from './Reception';
 import CampusWorld from './CampusWorld';
 import useVoiceChat from './Usevoicechat';
@@ -18,26 +14,9 @@ import { API_URL, SOCKET_URL } from './config';
 const NAV_TABS = [
   { id: 'reception', label: '🏠 Reception' },
   { id: 'campus', label: '🗺️ Campus' },
-  { id: 'labs', label: '🏛️ Labs' },
-  { id: 'allchallenges', label: '⚔️ All Challenges' },
+  { id: 'gaminglab', label: '🕹️ Gaming Lab' },
+  { id: 'summary', label: '📊 Summary' },
 ];
-
-const getCategoryOptionsFor = (buildingId) => {
-  switch (buildingId) {
-    case 'CODING_LAB':
-      return [
-        { value: 'MCQ_SPRINT', label: 'MCQ Sprint' },
-        { value: 'DSA_BATTLE', label: 'DSA Battle' },
-        { value: 'SQL_CHALLENGE', label: 'SQL Challenge' },
-      ];
-    case 'LIBRARY':
-      return [{ value: 'DOCUMENT_QUIZ', label: 'Document Quiz' }];
-    case 'EVENT_HALL':
-      return [{ value: 'HACKATHON', label: 'Hackathon' }];
-    default:
-      return [{ value: 'GENERAL', label: 'General' }];
-  }
-};
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || null);
@@ -46,16 +25,10 @@ function App() {
   const [players, setPlayers] = useState([]);
   const [view, setView] = useState('campus');
   const [activeGameId, setActiveGameId] = useState(null);
-  const [activeChallengeId, setActiveChallengeId] = useState(null);
-  const [activeBuildingId, setActiveBuildingId] = useState(null);
-  const [activeBuildingName, setActiveBuildingName] = useState(null);
   const [myPlayerId, setMyPlayerId] = useState(null);
-  const [labs, setLabs] = useState([]);
   const [socketReady, setSocketReady] = useState(false);
   const socketRef = useRef(null);
   const heldKeys = useRef({ up: false, down: false, left: false, right: false });
-  const [summaryDetailType, setSummaryDetailType] = useState(null);
-  const [summaryDetailBuilding, setSummaryDetailBuilding] = useState(null);
   const [summaryDetailLabel, setSummaryDetailLabel] = useState(null);
 
   // Voice + video chat hook — only becomes active once the socket is connected
@@ -66,17 +39,6 @@ function App() {
     remoteVideoStreams,
     localVideoStream,
   } = useVoiceChat(socketReady ? socketRef.current : null);
-
-  useEffect(() => {
-    fetch(`${API_URL}/labs`)
-      .then(res => res.ok ? res.json() : Promise.reject())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setLabs(data);
-        }
-      })
-      .catch(() => { });
-  }, []);
 
   useEffect(() => {
     if (!token) { setLoadingMe(false); return; }
@@ -93,12 +55,13 @@ function App() {
     socket.on('connect', () => {
       setMyPlayerId(socket.id);
       setSocketReady(true);
-      socket.emit('identify', { displayName: me.displayName, bodyColor: me.avatar.bodyColor });
+      socket.emit('identify', { displayName: me.displayName, bodyColor: me.avatar?.bodyColor || 'dodgerblue' });
     });
     socket.on('world-snapshot', setPlayers);
     socket.on('player-joined', (p) => setPlayers(prev => [...prev, p]));
     socket.on('world-update', setPlayers);
     socket.on('player-left', (id) => setPlayers(prev => prev.filter(p => p.id !== id)));
+
     return () => {
       setSocketReady(false);
       setMyPlayerId(null);
@@ -116,17 +79,17 @@ function App() {
 
   useEffect(() => {
     const down = (e) => {
-      if (e.key === 'ArrowUp') heldKeys.current.up = true;
-      if (e.key === 'ArrowDown') heldKeys.current.down = true;
-      if (e.key === 'ArrowLeft') heldKeys.current.left = true;
-      if (e.key === 'ArrowRight') heldKeys.current.right = true;
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') heldKeys.current.up = true;
+      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') heldKeys.current.down = true;
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') heldKeys.current.left = true;
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') heldKeys.current.right = true;
       sendMoveInput();
     };
     const up = (e) => {
-      if (e.key === 'ArrowUp') heldKeys.current.up = false;
-      if (e.key === 'ArrowDown') heldKeys.current.down = false;
-      if (e.key === 'ArrowLeft') heldKeys.current.left = false;
-      if (e.key === 'ArrowRight') heldKeys.current.right = false;
+      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') heldKeys.current.up = false;
+      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') heldKeys.current.down = false;
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') heldKeys.current.left = false;
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') heldKeys.current.right = false;
       sendMoveInput();
     };
     window.addEventListener('keydown', down);
@@ -158,23 +121,8 @@ function App() {
     if (socketRef.current) socketRef.current.disconnect();
   };
 
-  const handleEnterBuilding = (buildingId, buildingName) => {
-    setActiveBuildingId(buildingId);
-    setActiveBuildingName(buildingName);
-    setView('lab');
-  };
-
-  const handleSelectLab = (labId, labName) => {
-    if (labId === 'gaminglab') {
-      setView('gaminglab');
-    } else {
-      handleEnterBuilding(labId, labName);
-    }
-  };
-
-  const handleEnterChallenge = (challengeId) => {
-    setActiveChallengeId(challengeId);
-    setView('challenge');
+  const handleEnterGamingLab = () => {
+    setView('gaminglab');
   };
 
   const handleEnterBattlefield = (gameId) => {
@@ -182,15 +130,7 @@ function App() {
     setView('battlefield');
   };
 
-  const handleBackToMap = () => {
-    setActiveBuildingId(null);
-    setActiveBuildingName(null);
-    setView('campus');
-  };
-
   const handleOpenSummaryDetail = (type, buildingId, label) => {
-    setSummaryDetailType(type);
-    setSummaryDetailBuilding(buildingId);
     setSummaryDetailLabel(label);
     setView('summarydetail');
   };
@@ -200,13 +140,13 @@ function App() {
     <div style={{
       height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       background: '#060a12',
-      backgroundImage: 'radial-gradient(ellipse at 30% 20%, rgba(99,102,241,0.08) 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, rgba(139,92,246,0.06) 0%, transparent 60%)',
+      backgroundImage: 'radial-gradient(ellipse at 30% 20%, rgba(99,102,241,0.08) 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, rgba(59,130,246,0.06) 0%, transparent 60%)',
     }}>
       <div style={{ textAlign: 'center', animation: 'fadeIn 0.5s ease' }}>
         <div style={{
           width: '64px', height: '64px', borderRadius: '20px',
-          background: 'linear-gradient(135deg, #4f46e5, #8b5cf6)',
-          boxShadow: '0 0 40px rgba(99,102,241,0.4)',
+          background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
+          boxShadow: '0 0 40px rgba(59,130,246,0.4)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '28px', marginBottom: '24px', margin: '0 auto 24px',
           animation: 'float 2s ease-in-out infinite',
@@ -217,7 +157,7 @@ function App() {
         }}>
           <div style={{
             height: '100%', width: '60%',
-            background: 'linear-gradient(90deg, #6366f1, #8b5cf6)',
+            background: 'linear-gradient(90deg, #3b82f6, #6366f1)',
             borderRadius: '2px',
             animation: 'shimmer 1.5s ease-in-out infinite',
             backgroundSize: '200% 100%',
@@ -236,17 +176,7 @@ function App() {
   // ── Login ────────────────────────────────
   if (!token || !me) return <Login onLoginSuccess={(t) => setToken(t)} />;
 
-  // ── Challenge Room (full takeover) ───────
-  if (view === 'challenge') return (
-    <ChallengeRoom
-      token={token}
-      myUserId={me.id}
-      challengeId={activeChallengeId}
-      onExit={() => setView('lab')}
-    />
-  );
-
-  // ── Battlefield (full takeover, own screen, no nav bar while fighting) ───
+  // ── Battlefield (full takeover) ───
   if (view === 'battlefield') return (
     <Battlefield
       token={token}
@@ -255,7 +185,7 @@ function App() {
     />
   );
 
-  const isOnCampus = view === 'campus' || view === 'lab';
+  const isOnCampus = view === 'campus';
 
   return (
     <div style={{
@@ -271,47 +201,44 @@ function App() {
         position: 'relative', zIndex: 50,
         boxShadow: '0 1px 0 rgba(255,255,255,0.04), 0 4px 20px rgba(0,0,0,0.3)',
       }}>
-        {/* Subtle top gradient line */}
+        {/* Top gradient accent */}
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: '1px',
-          background: 'linear-gradient(90deg, transparent, rgba(99,102,241,0.5), rgba(139,92,246,0.5), transparent)',
+          background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.5), rgba(99,102,241,0.5), transparent)',
         }} />
 
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div
+          onClick={() => setView('campus')}
+          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+        >
           <div style={{
             width: '34px', height: '34px', borderRadius: '10px',
-            background: 'linear-gradient(135deg, #4f46e5, #8b5cf6)',
-            boxShadow: '0 0 16px rgba(99,102,241,0.4)',
+            background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
+            boxShadow: '0 0 16px rgba(59,130,246,0.4)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '17px', flexShrink: 0,
           }}>🎓</div>
           <span style={{ fontWeight: 800, fontSize: '15px', color: '#f1f5f9', letterSpacing: '-0.3px' }}>
-            Robo<span style={{ color: '#818cf8' }}>Campus</span>
+            Robo<span style={{ color: '#60a5fa' }}>Campus</span>
           </span>
         </div>
 
         {/* Nav tabs */}
         <nav style={{ display: 'flex', gap: '2px', background: 'rgba(255,255,255,0.03)', padding: '4px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
           {NAV_TABS.map(tab => {
-            const isActive = view === tab.id || (tab.id === 'campus' && isOnCampus);
+            const isActive = view === tab.id;
             return (
               <button
                 key={tab.id}
-                onClick={() => {
-                  if (!['campus', 'lab'].includes(tab.id)) {
-                    setActiveBuildingId(null);
-                    setActiveBuildingName(null);
-                  }
-                  setView(tab.id);
-                }}
+                onClick={() => setView(tab.id)}
                 style={{
                   padding: '6px 14px', borderRadius: '9px', border: 'none',
-                  background: isActive ? 'rgba(99,102,241,0.18)' : 'transparent',
-                  color: isActive ? '#a5b4fc' : '#4b5563',
+                  background: isActive ? 'rgba(59,130,246,0.18)' : 'transparent',
+                  color: isActive ? '#93c5fd' : '#4b5563',
                   fontSize: '13px', fontWeight: isActive ? 700 : 500, cursor: 'pointer',
                   transition: 'all 0.18s',
-                  outline: isActive ? '1px solid rgba(99,102,241,0.28)' : '1px solid transparent',
+                  outline: isActive ? '1px solid rgba(59,130,246,0.3)' : '1px solid transparent',
                   letterSpacing: isActive ? '-0.1px' : '0',
                   whiteSpace: 'nowrap',
                 }}
@@ -326,25 +253,25 @@ function App() {
 
         {/* User info */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {/* XP chip */}
+          {/* Level chip */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: '6px',
             padding: '4px 10px', borderRadius: '20px',
             background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
           }}>
-            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#6366f1', boxShadow: '0 0 6px #6366f1' }} />
-            <span style={{ color: '#94a3b8', fontSize: '11.5px', fontWeight: 600 }}>Lv.{me.profile.level}</span>
+            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#3b82f6', boxShadow: '0 0 6px #3b82f6' }} />
+            <span style={{ color: '#94a3b8', fontSize: '11.5px', fontWeight: 600 }}>Lv.{me.profile?.level || 1}</span>
             <span style={{ color: '#334155', fontSize: '11px' }}>·</span>
-            <span style={{ color: '#64748b', fontSize: '11px' }}>{me.profile.xp} XP</span>
+            <span style={{ color: '#64748b', fontSize: '11px' }}>{me.profile?.xp || 0} XP</span>
           </div>
 
           {/* Avatar */}
           <div style={{ position: 'relative' }}>
             <div style={{
               width: '34px', height: '34px', borderRadius: '50%',
-              background: `radial-gradient(circle at 30% 30%, ${me.avatar.bodyColor || '#6366f1'}, ${me.avatar.bodyColor || '#6366f1'}88)`,
+              background: `radial-gradient(circle at 30% 30%, ${me.avatar?.bodyColor || '#3b82f6'}, ${me.avatar?.bodyColor || '#3b82f6'}88)`,
               border: '2px solid rgba(255,255,255,0.12)',
-              boxShadow: `0 0 12px ${me.avatar.bodyColor || '#6366f1'}44`,
+              boxShadow: `0 0 12px ${me.avatar?.bodyColor || '#3b82f6'}44`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               color: 'white', fontWeight: 800, fontSize: '14px',
             }}>
@@ -423,22 +350,20 @@ function App() {
 
       {/* Main content area */}
       <main style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-
         {/* Reception */}
         {view === 'reception' && (
           <div style={{ height: '100%', overflowY: 'auto' }}>
             <Reception
               me={me}
               token={token}
-              onEnterBuilding={handleEnterBuilding}
-              onEnterChallenge={handleEnterChallenge}
+              onEnterGamingLab={handleEnterGamingLab}
+              onEnterBattlefield={handleEnterBattlefield}
               onOpenSummary={() => setView('summary')}
             />
           </div>
         )}
 
         {/* Summary Grid */}
-        {/* Summary grid */}
         {view === 'summary' && (
           <div style={{ height: '100%', overflowY: 'auto' }}>
             <SummaryGrid
@@ -449,93 +374,55 @@ function App() {
           </div>
         )}
 
-        {/* Summary detail */}
+        {/* Summary Detail */}
         {view === 'summarydetail' && (
           <div style={{ height: '100%', overflowY: 'auto' }}>
             <SummaryDetail
               token={token}
-              type={summaryDetailType}
-              buildingId={summaryDetailBuilding}
               label={summaryDetailLabel}
               onBack={() => setView('summary')}
             />
           </div>
         )}
 
-        {/* Campus + Lab overlay */}
+        {/* Campus map */}
         {isOnCampus && (
           <>
             {/* Avatar picker HUD on campus */}
-            {view === 'campus' && (
-              <div style={{
-                position: 'absolute', top: '12px', left: '50%', transform: 'translateX(-50%)',
-                zIndex: 20, background: 'rgba(8,12,20,0.85)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '14px', padding: '10px 16px',
-                backdropFilter: 'blur(12px)',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-              }}>
-                <AvatarPicker
-                  token={token}
-                  currentColor={me.avatar.bodyColor}
-                  onUpdated={(newAvatar) => {
-                    setMe(prev => ({ ...prev, avatar: newAvatar }));
-                    if (socketRef.current) {
-                      socketRef.current.emit('identify', {
-                        displayName: me.displayName,
-                        bodyColor: newAvatar.bodyColor,
-                      });
-                    }
-                  }}
-                />
-              </div>
-            )}
+            <div style={{
+              position: 'absolute', top: '12px', left: '50%', transform: 'translateX(-50%)',
+              zIndex: 20, background: 'rgba(8,12,20,0.85)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '14px', padding: '10px 16px',
+              backdropFilter: 'blur(12px)',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+            }}>
+              <AvatarPicker
+                token={token}
+                currentColor={me.avatar?.bodyColor || 'dodgerblue'}
+                onUpdated={(newAvatar) => {
+                  setMe(prev => ({ ...prev, avatar: newAvatar }));
+                  if (socketRef.current) {
+                    socketRef.current.emit('identify', {
+                      displayName: me.displayName,
+                      bodyColor: newAvatar.bodyColor,
+                    });
+                  }
+                }}
+              />
+            </div>
 
             <CampusWorld
-              labs={labs}
               players={players}
               myPlayerId={myPlayerId}
               heldKeys={heldKeys}
               sendMoveInput={sendMoveInput}
-              onEnterBuilding={handleSelectLab}
+              onEnterBuilding={handleEnterGamingLab}
               speakingPeerIds={speakingPeerIds}
               remoteVideoStreams={remoteVideoStreams}
               myVideoStream={localVideoStream}
             />
-
-            {/* Lab modal overlaid on campus */}
-            {view === 'lab' && (
-              <Lab
-                token={token}
-                buildingId={activeBuildingId}
-                buildingName={activeBuildingName}
-                categoryOptions={getCategoryOptionsFor(activeBuildingId)}
-                onEnterChallenge={handleEnterChallenge}
-                onBackToMap={handleBackToMap}
-              />
-            )}
           </>
-        )}
-
-        {/* Labs list */}
-        {view === 'labs' && (
-          <div style={{ height: '100%', overflowY: 'auto' }}>
-            <Labs
-              labs={labs}
-              onSelectLab={handleSelectLab}
-            />
-          </div>
-        )}
-
-        {/* All Challenges */}
-        {view === 'allchallenges' && (
-          <div style={{ height: '100%', overflowY: 'auto' }}>
-            <AllChallenges
-              token={token}
-              onEnterChallenge={handleEnterChallenge}
-              onEnterBattlefield={handleEnterBattlefield}
-            />
-          </div>
         )}
 
         {/* Gaming Lab */}
