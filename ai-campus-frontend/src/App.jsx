@@ -10,11 +10,13 @@ import Battlefield from './Battlefield';
 import SummaryGrid from './SummaryGrid';
 import SummaryDetail from './SummaryDetail';
 import { API_URL, SOCKET_URL } from './config';
+import RoadmapLab from './RoadmapLab';
 
 const NAV_TABS = [
   { id: 'reception', label: '🏠 Reception' },
   { id: 'campus', label: '🗺️ Campus' },
   { id: 'gaminglab', label: '🕹️ Gaming Lab' },
+  { id: 'roadmaplab', label: '🧭 Roadmap Lab' },
   { id: 'summary', label: '📊 Summary' },
 ];
 
@@ -123,6 +125,14 @@ function App() {
 
   const handleEnterGamingLab = () => {
     setView('gaminglab');
+  };
+
+  const handleEnterBuilding = (buildingId) => {
+    if (buildingId === 'roadmaplab') {
+      setView('roadmaplab');
+    } else {
+      setView('gaminglab');
+    }
   };
 
   const handleEnterBattlefield = (gameId) => {
@@ -417,7 +427,7 @@ function App() {
               myPlayerId={myPlayerId}
               heldKeys={heldKeys}
               sendMoveInput={sendMoveInput}
-              onEnterBuilding={handleEnterGamingLab}
+              onEnterBuilding={handleEnterBuilding}
               speakingPeerIds={speakingPeerIds}
               remoteVideoStreams={remoteVideoStreams}
               myVideoStream={localVideoStream}
@@ -431,6 +441,16 @@ function App() {
             <GamingLab
               token={token}
               onEnterBattlefield={handleEnterBattlefield}
+            />
+          </div>
+        )}
+
+        {/* Roadmap Lab */}
+        {view === 'roadmaplab' && (
+          <div style={{ height: '100%', overflowY: 'auto' }}>
+            <RoadmapLab
+              token={token}
+              onExit={() => setView('campus')}
             />
           </div>
         )}

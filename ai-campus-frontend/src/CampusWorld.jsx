@@ -106,6 +106,19 @@ function CampusWorld({ labs = [], players, myPlayerId, heldKeys, sendMoveInput, 
           emoji="🕹️"
         />
 
+        {/* Roadmap Lab Building */}
+        <Building
+          id="roadmaplab"
+          x={1400}
+          y={600}
+          name="Roadmap Lab"
+          color="#10b981"
+          playerX={myPlayer.x}
+          playerY={myPlayer.y}
+          onEnter={onEnterBuilding}
+          emoji="🗺️"
+        />
+
         {/* Players */}
         {players.map((p) => (
           <PlayerCharacter
