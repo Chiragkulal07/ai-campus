@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { ReactFlow, Background, Controls } from '@xyflow/react';
+import { ReactFlow, Background, Controls, useNodesState } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { API_URL } from './config';
 
@@ -39,7 +39,7 @@ function RoadmapLab({ token, onExit }) {
   const [questions, setQuestions] = useState([]);
   const [answers, setAnswers] = useState([]);
   const [roadmap, setRoadmap] = useState(null);
-  const [nodePositions, setNodePositions] = useState({});
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [resources, setResources] = useState([]);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
@@ -79,7 +79,12 @@ function RoadmapLab({ token, onExit }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'failed to generate roadmap');
       setRoadmap(data.roadmap);
-      setNodePositions({});
+      const positions = computeLayout(data.roadmap.nodes, data.roadmap.edges);
+      setNodes(data.roadmap.nodes.map((node) => ({
+        id: node.id,
+        position: positions[node.id] || { x: 0, y: 0 },
+        data: { label: node.label }
+      })));
       setResources(data.resources || []);
       setPhase('result');
     } catch (err) {
@@ -89,28 +94,24 @@ function RoadmapLab({ token, onExit }) {
   };
 
   const flowNodes = useMemo(() => {
-    if (!roadmap) return [];
-    const layoutPositions = computeLayout(roadmap.nodes, roadmap.edges);
-    return roadmap.nodes.map((n) => ({
-      id: n.id,
-      position: nodePositions[n.id] || layoutPositions[n.id] || { x: 0, y: 0 },
-      data: { label: n.label },
+    return nodes.map((node) => ({
+      ...node,
       style: {
-        background: selectedNodeId === n.id
+        background: selectedNodeId === node.id
           ? 'linear-gradient(135deg, #3b82f6, #2563eb)'
           : 'linear-gradient(145deg, rgba(22,34,58,0.98), rgba(10,18,32,0.98))',
         color: '#f1f5f9',
-        border: selectedNodeId === n.id ? '1px solid rgba(147,197,253,0.8)' : '1px solid rgba(148,163,184,0.2)',
+        border: selectedNodeId === node.id ? '1px solid rgba(147,197,253,0.8)' : '1px solid rgba(148,163,184,0.2)',
         borderRadius: '9px',
         padding: '10px 14px',
         fontSize: '13px',
         fontWeight: 600,
         width: 220,
-        boxShadow: selectedNodeId === n.id ? '0 8px 24px rgba(37,99,235,0.35)' : '0 8px 20px rgba(0,0,0,0.22)',
+        boxShadow: selectedNodeId === node.id ? '0 8px 24px rgba(37,99,235,0.35)' : '0 8px 20px rgba(0,0,0,0.22)',
         transition: 'all 0.2s ease',
       }
     }));
-  }, [roadmap, nodePositions, selectedNodeId]);
+  }, [nodes, selectedNodeId]);
 
   const flowEdges = useMemo(() => {
     if (!roadmap) return [];
@@ -124,17 +125,6 @@ function RoadmapLab({ token, onExit }) {
   }, [roadmap]);
 
   const onNodeClick = useCallback((_, node) => setSelectedNodeId(node.id), []);
-  const onNodesChange = useCallback((changes) => {
-    setNodePositions((currentPositions) => {
-      const nextPositions = { ...currentPositions };
-      changes.forEach((change) => {
-        if (change.type === 'position' && change.position) {
-          nextPositions[change.id] = change.position;
-        }
-      });
-      return nextPositions;
-    });
-  }, []);
 
   const selectedNode = roadmap?.nodes.find((n) => n.id === selectedNodeId);
   const selectedResources = resources.find((r) => r.nodeId === selectedNodeId);
