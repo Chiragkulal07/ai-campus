@@ -1,8 +1,29 @@
 const { StateGraph, END, START } = require('@langchain/langgraph');
 const { buildLLMChain } = require('./llmChain');
 
-function stripCodeFence(text) {
-  return text.trim().replace(/^```json\s*/i, '').replace(/```$/, '').trim();
+function parseJsonResponse(text) {
+  const content = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  const start = content.indexOf('{');
+  if (start === -1) throw new Error('LLM response did not contain a JSON object');
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < content.length; i++) {
+    const character = content[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"') inString = true;
+    else if (character === '{') depth++;
+    else if (character === '}' && --depth === 0) {
+      return JSON.parse(content.slice(start, i + 1));
+    }
+  }
+  throw new Error('LLM response contained incomplete JSON');
 }
 
 // ── Follow-up questions (single LLM call, no graph needed) ──
@@ -14,7 +35,7 @@ Return ONLY valid JSON, no markdown formatting, no commentary, in this exact sha
 { "questions": ["question 1", "question 2", "question 3", "question 4"] }`;
 
   const response = await chain.invoke(prompt);
-  const parsed = JSON.parse(stripCodeFence(response.content));
+  const parsed = parseJsonResponse(response.content);
   if (!Array.isArray(parsed.questions)) throw new Error('LLM did not return a valid questions array');
   return parsed.questions;
 }
@@ -44,7 +65,7 @@ Use 6 to 14 nodes. An edge from A to B means "A should be learned before B".`;
 
 function parseRoadmapNode(state) {
   try {
-    const parsed = JSON.parse(stripCodeFence(state.rawOutput));
+    const parsed = parseJsonResponse(state.rawOutput);
     if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) {
       throw new Error('missing nodes or edges array');
     }
