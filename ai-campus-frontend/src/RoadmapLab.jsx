@@ -230,7 +230,9 @@ function RoadmapLab({ token, onExit }) {
                 onNodesChange={onNodesChange}
                 nodesDraggable
                 fitView
-                fitViewOptions={{ padding: 0.2, minZoom: 0.4, maxZoom: 1 }}
+                minZoom={0.1}
+                maxZoom={2}
+                fitViewOptions={{ padding: 0.2, minZoom: 0.1, maxZoom: 2 }}
                 colorMode="dark"
               >
                 <Background color="#334155" gap={16} />
