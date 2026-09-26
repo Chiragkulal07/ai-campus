@@ -1,33 +1,80 @@
 const { StateGraph, END, START } = require('@langchain/langgraph');
 const { buildLLMChain } = require('./llmChain');
+const redisClient = require('../config/redisClient');
+const { embedText, cosineSimilarity } = require('./embeddings');
 
-function parseJsonResponse(text) {
-  const content = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
-  const start = content.indexOf('{');
-  if (start === -1) throw new Error('LLM response did not contain a JSON object');
+const QUESTIONS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30;
+const ROADMAP_CACHE_TTL_SECONDS = 60 * 60 * 24 * 7;
+const SIMILARITY_THRESHOLD = 0.90;
+const MAX_CACHE_ENTRIES = 200; // per cache list, oldest dropped beyond this
 
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let i = start; i < content.length; i++) {
-    const character = content[i];
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (character === '\\') escaped = true;
-      else if (character === '"') inString = false;
-      continue;
-    }
-    if (character === '"') inString = true;
-    else if (character === '{') depth++;
-    else if (character === '}' && --depth === 0) {
-      return JSON.parse(content.slice(start, i + 1));
-    }
-  }
-  throw new Error('LLM response contained incomplete JSON');
+const QUESTIONS_INDEX_KEY = 'semcache:questions:index';
+const ROADMAP_INDEX_KEY = 'semcache:roadmap:index';
+
+function stripCodeFence(text) {
+  return text.trim().replace(/^```json\s*/i, '').replace(/```$/, '').trim();
 }
 
-// ── Follow-up questions (single LLM call, no graph needed) ──
+function normalizeTopic(topic) {
+  return topic.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// ── Generic semantic cache helpers, reused by both caches ──
+
+async function getIndex(indexKey) {
+  try {
+    const raw = await redisClient.get(indexKey);
+    return raw ? JSON.parse(raw) : [];
+  } catch (err) {
+    console.error(`Redis read failed for ${indexKey}:`, err.message);
+    return [];
+  }
+}
+
+async function saveIndex(indexKey, entries) {
+  try {
+    const trimmed = entries.slice(-MAX_CACHE_ENTRIES); // keep most recent N
+    await redisClient.set(indexKey, JSON.stringify(trimmed));
+  } catch (err) {
+    console.error(`Redis write failed for ${indexKey}:`, err.message);
+  }
+}
+
+async function findSemanticMatch(indexKey, queryEmbedding) {
+  const entries = await getIndex(indexKey);
+  let best = null;
+  let bestScore = -1;
+
+  for (const entry of entries) {
+    const score = cosineSimilarity(queryEmbedding, entry.embedding);
+    if (score > bestScore) {
+      bestScore = score;
+      best = entry;
+    }
+  }
+
+  if (best && bestScore >= SIMILARITY_THRESHOLD) {
+    console.log(`[semantic cache] HIT on "${indexKey}" — score ${bestScore.toFixed(3)} matched "${best.sourceText}"`);
+    return best;
+  }
+  console.log(`[semantic cache] MISS on "${indexKey}" — best score ${bestScore.toFixed(3)}`);
+  return null;
+}
+
+async function addToIndex(indexKey, entry) {
+  const entries = await getIndex(indexKey);
+  entries.push(entry);
+  await saveIndex(indexKey, entries);
+}
+
+// ── Follow-up questions (semantic cache keyed by topic) ──
 async function generateFollowUpQuestions(topic) {
+  const normalizedTopic = normalizeTopic(topic);
+  const queryEmbedding = await embedText(normalizedTopic);
+
+  const match = await findSemanticMatch(QUESTIONS_INDEX_KEY, queryEmbedding);
+  if (match) return match.questions;
+
   const chain = buildLLMChain();
   const prompt = `A user wants to learn about: "${topic}".
 Ask exactly 4 short follow-up questions to understand their current level, their goal, and how much time they have, so a personalized learning roadmap can be built.
@@ -35,8 +82,16 @@ Return ONLY valid JSON, no markdown formatting, no commentary, in this exact sha
 { "questions": ["question 1", "question 2", "question 3", "question 4"] }`;
 
   const response = await chain.invoke(prompt);
-  const parsed = parseJsonResponse(response.content);
+  const parsed = JSON.parse(stripCodeFence(response.content));
   if (!Array.isArray(parsed.questions)) throw new Error('LLM did not return a valid questions array');
+
+  await addToIndex(QUESTIONS_INDEX_KEY, {
+    sourceText: normalizedTopic,
+    embedding: queryEmbedding,
+    questions: parsed.questions,
+    cachedAt: Date.now(),
+  });
+
   return parsed.questions;
 }
 
@@ -65,7 +120,7 @@ Use 6 to 14 nodes. An edge from A to B means "A should be learned before B".`;
 
 function parseRoadmapNode(state) {
   try {
-    const parsed = parseJsonResponse(state.rawOutput);
+    const parsed = JSON.parse(stripCodeFence(state.rawOutput));
     if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) {
       throw new Error('missing nodes or edges array');
     }
@@ -93,8 +148,24 @@ const graph = new StateGraph({
 const compiledGraph = graph.compile();
 
 async function runRoadmapGraph(topic, answers) {
+  const normalizedTopic = normalizeTopic(topic);
+  const answersText = answers.map((a) => `${a.question}::${a.answer}`).join('|');
+  const querySourceText = `${normalizedTopic}|${answersText}`;
+  const queryEmbedding = await embedText(querySourceText);
+
+  const match = await findSemanticMatch(ROADMAP_INDEX_KEY, queryEmbedding);
+  if (match) return match.roadmap;
+
   const result = await compiledGraph.invoke({ topic, answers });
   if (result.error) throw new Error(result.error);
+
+  await addToIndex(ROADMAP_INDEX_KEY, {
+    sourceText: querySourceText,
+    embedding: queryEmbedding,
+    roadmap: result.roadmap,
+    cachedAt: Date.now(),
+  });
+
   return result.roadmap;
 }
 

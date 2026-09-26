@@ -447,7 +447,7 @@ function App() {
 
         {/* Roadmap Lab */}
         {view === 'roadmaplab' && (
-          <div style={{ height: '100%', overflowY: 'auto' }}>
+          <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
             <RoadmapLab
               token={token}
               onExit={() => setView('campus')}

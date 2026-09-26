@@ -6,6 +6,7 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 const { initSocket } = require('./socket');
 const { createRateLimiter } = require('./middleware/rateLimiter');
+const { embedText } = require('./lib/embeddings');
 
 const app = express();
 app.use(cors());
@@ -30,6 +31,8 @@ initSocket(io);
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('connected to MongoDB'))
   .catch((err) => console.error('MongoDB connection failed:', err.message));
+
+embedText('warmup').then(() => console.log('embedding model ready')).catch((err) => console.error('embedding model failed to load:', err.message));
 
 // Middleware to expose `io` inside routers
 app.use((req, res, next) => {

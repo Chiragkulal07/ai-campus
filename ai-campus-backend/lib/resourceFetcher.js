@@ -105,7 +105,9 @@ async function fetchResourcesForNode(node) {
 // just gets an empty array for that resource type — the roadmap itself
 // is never blocked by this.
 async function fetchResourcesForRoadmap(nodes) {
+  console.log('[resourceFetcher] called with', nodes.length, 'nodes:', nodes.map(n => n.label));
   const results = await Promise.all(nodes.map(fetchResourcesForNode));
+  console.log('[resourceFetcher] finished, results:', JSON.stringify(results, null, 2));
   return results;
 }
 
