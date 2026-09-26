@@ -33,6 +33,7 @@ router.post('/start', requireAuth, async (req, res) => {
 });
 
 // POST /roadmap/:id/answer — submit answers, get back the generated roadmap
+// POST /roadmap/:id/answer — submit answers, get back the generated roadmap
 router.post('/:id/answer', requireAuth, async (req, res) => {
   const { answers } = req.body; // array of strings, same order as the questions returned
   if (!Array.isArray(answers)) return res.status(400).json({ error: 'answers must be an array' });
@@ -48,21 +49,35 @@ router.post('/:id/answer', requireAuth, async (req, res) => {
   session.status = 'generating';
   await session.save();
 
-   try {
-    const roadmap = await runRoadmapGraph(session.topic, session.followUpQuestions);
-    const resources = await fetchResourcesForRoadmap(roadmap.nodes);
-    session.roadmap = roadmap;
-    session.resources = resources;
-    session.status = 'completed';
-    await session.save();
-    res.json({ sessionId: session._id, status: session.status, roadmap: session.roadmap, resources: session.resources });
+  let roadmap;
+  try {
+    roadmap = await runRoadmapGraph(session.topic, session.followUpQuestions);
   } catch (err) {
     console.error('runRoadmapGraph failed:', err.message);
     session.status = 'failed';
     session.errorMessage = err.message;
     await session.save();
-    res.status(502).json({ error: 'failed to generate roadmap, please try again' });
+    return res.status(502).json({ error: 'failed to generate roadmap, please try again' });
   }
+
+  // Roadmap is ready — respond now instead of waiting on resource fetching.
+  session.roadmap = roadmap;
+  session.status = 'completed';
+  await session.save();
+  res.json({ sessionId: session._id, status: session.status, roadmap: session.roadmap, resources: session.resources });
+
+  // Fetch resources in the background; patch them onto the session when done.
+  // Client can pick this up via GET /roadmap/:id.
+  fetchResourcesForRoadmap(roadmap.nodes)
+    .then(async (resources) => {
+      session.resources = resources;
+      await session.save();
+    })
+    .catch((err) => {
+      // Resources are best-effort — a failure here should never affect
+      // the already-completed roadmap/session status.
+      console.error('background resource fetch failed:', err.message);
+    });
 });
 
 // GET /roadmap/:id — fetch one session

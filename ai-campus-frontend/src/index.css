@@ -83,6 +83,23 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 3px var(--accent-glow) !important;
 }
 
+@media (max-width: 760px) {
+  .roadmap-result-layout {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .roadmap-canvas-panel {
+    flex: 1 0 420px !important;
+  }
+
+  .roadmap-resource-panel {
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+    min-height: 220px;
+  }
+}
+
 /* Global Animations */
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(16px); }

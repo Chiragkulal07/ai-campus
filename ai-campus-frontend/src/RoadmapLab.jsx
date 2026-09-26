@@ -1,5 +1,5 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { ReactFlow, Background, Controls, MiniMap } from '@xyflow/react';
+import { useState, useCallback, useMemo } from 'react';
+import { ReactFlow, Background, Controls } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { API_URL } from './config';
 
@@ -39,33 +39,10 @@ function RoadmapLab({ token, onExit }) {
   const [questions, setQuestions] = useState([]);
   const [answers, setAnswers] = useState([]);
   const [roadmap, setRoadmap] = useState(null);
+  const [nodePositions, setNodePositions] = useState({});
   const [resources, setResources] = useState([]);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
-  const [revealedNodeCount, setRevealedNodeCount] = useState(0);
-
-  useEffect(() => {
-    if (phase !== 'result' || !roadmap) {
-      return undefined;
-    }
-
-    const resetTimeoutId = setTimeout(() => setRevealedNodeCount(0), 0);
-    const intervalId = setInterval(() => {
-      setRevealedNodeCount((currentCount) => {
-        if (currentCount >= roadmap.nodes.length) {
-          clearInterval(intervalId);
-          return currentCount;
-        }
-        return currentCount + 1;
-      });
-    }, 200);
-
-    return () => {
-      clearTimeout(resetTimeoutId);
-      clearInterval(intervalId);
-    };
-  }, [phase, roadmap]);
-
   const handleStart = async (e) => {
     e.preventDefault();
     if (!topic.trim()) return;
@@ -102,6 +79,7 @@ function RoadmapLab({ token, onExit }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'failed to generate roadmap');
       setRoadmap(data.roadmap);
+      setNodePositions({});
       setResources(data.resources || []);
       setPhase('result');
     } catch (err) {
@@ -112,10 +90,10 @@ function RoadmapLab({ token, onExit }) {
 
   const flowNodes = useMemo(() => {
     if (!roadmap) return [];
-    const positions = computeLayout(roadmap.nodes, roadmap.edges);
-    return roadmap.nodes.slice(0, revealedNodeCount).map((n) => ({
+    const layoutPositions = computeLayout(roadmap.nodes, roadmap.edges);
+    return roadmap.nodes.map((n) => ({
       id: n.id,
-      position: positions[n.id] || { x: 0, y: 0 },
+      position: nodePositions[n.id] || layoutPositions[n.id] || { x: 0, y: 0 },
       data: { label: n.label },
       style: {
         background: selectedNodeId === n.id
@@ -132,21 +110,31 @@ function RoadmapLab({ token, onExit }) {
         transition: 'all 0.2s ease',
       }
     }));
-  }, [roadmap, revealedNodeCount, selectedNodeId]);
+  }, [roadmap, nodePositions, selectedNodeId]);
 
   const flowEdges = useMemo(() => {
     if (!roadmap) return [];
-    const revealedNodeIds = new Set(roadmap.nodes.slice(0, revealedNodeCount).map((n) => n.id));
-    return roadmap.edges.filter((e) => revealedNodeIds.has(e.source) && revealedNodeIds.has(e.target)).map((e, i) => ({
+    return roadmap.edges.map((e, i) => ({
       id: `e-${i}`,
       source: e.source,
       target: e.target,
       animated: true,
       style: { stroke: '#3b82f6' }
     }));
-  }, [roadmap, revealedNodeCount]);
+  }, [roadmap]);
 
   const onNodeClick = useCallback((_, node) => setSelectedNodeId(node.id), []);
+  const onNodesChange = useCallback((changes) => {
+    setNodePositions((currentPositions) => {
+      const nextPositions = { ...currentPositions };
+      changes.forEach((change) => {
+        if (change.type === 'position' && change.position) {
+          nextPositions[change.id] = change.position;
+        }
+      });
+      return nextPositions;
+    });
+  }, []);
 
   const selectedNode = roadmap?.nodes.find((n) => n.id === selectedNodeId);
   const selectedResources = resources.find((r) => r.nodeId === selectedNodeId);
@@ -223,8 +211,8 @@ function RoadmapLab({ token, onExit }) {
       )}
 
       {phase === 'result' && roadmap && (
-        <div style={{ display: 'flex', flex: 1, gap: '20px', minHeight: 0, minWidth: 0 }}>
-          <div style={{ flex: 2, minWidth: 0, minHeight: 360, border: '1px solid rgba(148,163,184,0.16)', borderRadius: '14px', overflow: 'hidden', background: 'rgba(8,14,25,0.82)', boxShadow: '0 18px 50px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column' }}>
+        <div className="roadmap-result-layout" style={{ display: 'flex', flex: 1, gap: '20px', minHeight: 0, minWidth: 0 }}>
+          <div className="roadmap-canvas-panel" style={{ flex: 2, minWidth: 0, minHeight: 360, border: '1px solid rgba(148,163,184,0.16)', borderRadius: '14px', overflow: 'hidden', background: 'rgba(8,14,25,0.82)', boxShadow: '0 18px 50px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 16px', borderBottom: '1px solid rgba(148,163,184,0.12)', background: 'rgba(15,23,42,0.58)' }}>
               <div>
                 <div style={{ color: '#f8fafc', fontSize: '13px', fontWeight: 700 }}>Your learning path</div>
@@ -239,17 +227,19 @@ function RoadmapLab({ token, onExit }) {
                 nodes={flowNodes}
                 edges={flowEdges}
                 onNodeClick={onNodeClick}
+                onNodesChange={onNodesChange}
+                nodesDraggable
                 fitView
+                fitViewOptions={{ padding: 0.2, minZoom: 0.4, maxZoom: 1 }}
                 colorMode="dark"
               >
                 <Background color="#334155" gap={16} />
                 <Controls />
-                <MiniMap />
               </ReactFlow>
             </div>
           </div>
 
-          <div style={{ flex: 1, minWidth: 260, overflowY: 'auto', padding: '20px', border: '1px solid rgba(148,163,184,0.16)', borderRadius: '14px', background: 'rgba(15,23,42,0.52)', boxShadow: '0 18px 50px rgba(0,0,0,0.16)' }}>
+          <div className="roadmap-resource-panel" style={{ flex: 1, minWidth: 260, overflowY: 'auto', padding: '20px', border: '1px solid rgba(148,163,184,0.16)', borderRadius: '14px', background: 'rgba(15,23,42,0.52)', boxShadow: '0 18px 50px rgba(0,0,0,0.16)' }}>
             {!selectedNode && (
               <div style={{ minHeight: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', padding: '24px', color: '#64748b' }}>
                 <div style={{ width: '42px', height: '42px', display: 'grid', placeItems: 'center', borderRadius: '12px', background: 'rgba(59,130,246,0.1)', color: '#60a5fa', fontSize: '20px', marginBottom: '12px' }}>↗</div>

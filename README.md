@@ -1,15 +1,14 @@
 # RoboCampus / AI Campus
 
-RoboCampus is a full-stack web app that blends a social campus experience, multiplayer game lab, and AI-powered learning roadmap generation. The project is split into a Node.js backend and a React + Vite frontend, with real-time multiplayer behavior powered by Socket.IO and AI features powered by LangChain and Google/OpenRouter-based model integrations.
+RoboCampus is a full-stack web app that combines a live campus experience, multiplayer game lab, and AI-powered learning roadmap generation. The project is split into a Node.js backend and a React + Vite frontend, with real-time multiplayer behavior powered by Socket.IO and AI features powered by LangChain and GenAI integrations.
 
 ## Overview
 
-This project combines several ideas into a single experience:
+This project brings together:
 
-- A user authentication and profile system
 - A campus-style frontend with avatars and world navigation
 - A multiplayer gaming lab with lobby creation, join flows, and live battle logic
-- Real-time voice/video communication support
+- Real-time voice and video communication support
 - AI-generated learning roadmaps based on user answers
 - Resource suggestions from YouTube and Tavily
 
@@ -88,11 +87,10 @@ robulux/
 
 ## Main features
 
-### 1. Authentication and profile
-- User signup/login with hashed passwords
-- JWT-based authentication
-- Profile data including avatar colors and progression stats
+### 1. Profile and player state
+- User profile data including avatar colors and progression stats
 - Persistent game history and summary data
+- Local session tracking for the active player
 
 ### 2. Campus and social world
 - Campus map navigation
@@ -260,6 +258,7 @@ The frontend will usually run on a Vite dev server, defaulting to a local port s
 - The default `ai-campus-frontend/src/config.js` uses `VITE_API_URL` or localhost fallback.
 - The app expects valid AI keys to be configured for roadmap generation and resource fetching.
 - Redis is used for request rate limiting, so it should be available before starting the backend.
+- This project is built for local development and does not rely on a public account system for core functionality.
 
 ## Production / deployment considerations
 
