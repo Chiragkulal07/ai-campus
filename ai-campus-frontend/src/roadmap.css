@@ -67,7 +67,7 @@
 
 .roadmap-header-title {
   margin: 0;
-  font-size: 23px;
+  font-size: 32px;
   font-weight: 800;
   letter-spacing: -0.025em;
   color: #f8fafc;
@@ -119,9 +119,10 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px 4px 32px 4px;
+  padding: 8px 4px 32px;
   display: flex;
   flex-direction: column;
+  align-items: center;
 }
 
 .roadmap-form-scroll-container::-webkit-scrollbar {
@@ -139,15 +140,15 @@
 }
 
 .roadmap-form-card {
-  max-width: 580px;
+  max-width: 688px;
   width: 100%;
   flex-shrink: 0;
-  background: linear-gradient(145deg, rgba(15, 23, 42, 0.88), rgba(10, 16, 28, 0.96));
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 16px;
-  padding: 30px 28px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03);
-  margin-top: 6px;
+  background: linear-gradient(145deg, rgba(31, 33, 43, 0.96), rgba(24, 26, 35, 0.98));
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 20px;
+  padding: 32px;
+  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(255, 255, 255, 0.025);
+  margin-top: 10px;
   box-sizing: border-box;
   animation: stepSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -167,26 +168,27 @@
 }
 
 .roadmap-form-title {
-  margin: 0 0 8px 0;
-  font-size: 20px;
+  margin: 0 0 6px;
+  font-size: 28px;
   font-weight: 700;
   color: #f8fafc;
+  letter-spacing: -0.025em;
 }
 
 .roadmap-form-desc {
-  color: #94a3b8;
-  font-size: 13.5px;
+  color: #a1a6b4;
+  font-size: 15px;
   line-height: 1.5;
-  margin: 0 0 18px 0;
+  margin: 0 0 18px;
 }
 
 .roadmap-input-field {
-  padding: 13px 16px;
-  border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(8, 14, 25, 0.85);
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(12, 14, 21, 0.76);
   color: #f8fafc;
-  font-size: 14px;
+  font-size: 15px;
   width: 100%;
   margin-bottom: 16px;
   box-sizing: border-box;
@@ -206,8 +208,8 @@
   align-items: center;
   justify-content: center;
   gap: 9px;
-  padding: 12px 24px;
-  border-radius: 10px;
+  padding: 14px 25px;
+  border-radius: 11px;
   border: 1px solid rgba(147, 197, 253, 0.3);
   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   color: #ffffff;
@@ -237,11 +239,11 @@
 }
 
 .roadmap-chip-btn {
-  font-size: 12px;
-  color: #94a3b8;
-  background: rgba(148, 163, 184, 0.08);
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  padding: 5px 12px;
+  font-size: 13px;
+  color: #e0e3eb;
+  background: rgba(148, 163, 184, 0.07);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  padding: 6px 13px;
   border-radius: 999px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -253,9 +255,36 @@
   color: #93c5fd;
 }
 
+@media (max-width: 600px) {
+  .roadmap-container {
+    padding: 18px 16px;
+  }
+
+  .roadmap-header-title {
+    font-size: 26px;
+  }
+
+  .roadmap-form-scroll-container {
+    padding: 8px 0 24px;
+  }
+
+  .roadmap-form-card {
+    padding: 24px 20px;
+    border-radius: 17px;
+  }
+
+  .roadmap-form-title {
+    font-size: 24px;
+  }
+
+  .roadmap-primary-btn {
+    width: 100%;
+  }
+}
+
 /* Question items in questions phase */
 .roadmap-question-card {
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 
 .roadmap-question-label {
@@ -282,6 +311,62 @@
   flex-shrink: 0;
 }
 
+.roadmap-questions-form {
+  width: 100%;
+  max-width: 580px;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  margin-top: 0;
+  overflow: hidden;
+}
+
+.roadmap-questions-form .roadmap-form-header-badge {
+  flex-shrink: 0;
+  margin-bottom: 10px;
+}
+
+.roadmap-questions-form .roadmap-form-title,
+.roadmap-questions-form .roadmap-form-desc {
+  flex-shrink: 0;
+}
+
+.roadmap-questions-form .roadmap-form-desc {
+  margin-bottom: 12px;
+}
+
+.roadmap-questions-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 8px 0 0;
+  scrollbar-color: rgba(96, 165, 250, 0.35) transparent;
+  scrollbar-width: thin;
+}
+
+.roadmap-questions-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.roadmap-questions-list::-webkit-scrollbar-thumb {
+  background: rgba(96, 165, 250, 0.35);
+  border-radius: 5px;
+}
+
+.roadmap-question-input {
+  margin-bottom: 0;
+  padding: 11px 14px;
+}
+
+.roadmap-questions-form > .roadmap-primary-btn {
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 8px;
+}
+
 /* Error card */
 .roadmap-error-card {
   max-width: 480px;
@@ -305,7 +390,7 @@
 .roadmap-result-layout {
   display: flex;
   flex: 1;
-  gap: 20px;
+  gap: 14px;
   min-height: 0 !important;
   min-width: 0 !important;
   height: 100% !important;
@@ -315,16 +400,16 @@
 
 /* Left Panel: React Flow Canvas Panel */
 .roadmap-canvas-panel {
-  flex: 2;
+  flex: 1 1 auto;
   min-width: 0;
   min-height: 0 !important;
   height: 100% !important;
   max-height: 100% !important;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 15px;
   overflow: hidden;
-  background: radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.6) 0%, rgba(8, 14, 25, 0.95) 100%);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+  background: radial-gradient(ellipse at 48% 48%, rgba(30, 39, 52, 0.6) 0%, rgba(13, 18, 26, 0.98) 76%);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -334,9 +419,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 13px 18px;
+  padding: 11px 14px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-  background: rgba(15, 23, 42, 0.72);
+  background: rgba(25, 34, 46, 0.88);
   backdrop-filter: blur(12px);
   z-index: 10;
   flex-shrink: 0;
@@ -428,7 +513,10 @@
 }
 
 /* React Flow Dark Theme Overrides */
-.roadmap-canvas-panel .react-flow__controls {
+.roadmap-canvas-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   background: rgba(15, 23, 42, 0.85);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(148, 163, 184, 0.18);
@@ -437,7 +525,8 @@
   padding: 4px;
 }
 
-.roadmap-canvas-panel .react-flow__controls-button {
+.roadmap-canvas-controls button {
+  appearance: none;
   background: transparent;
   border: none;
   border-bottom: 1px solid rgba(148, 163, 184, 0.1);
@@ -447,22 +536,24 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.roadmap-canvas-panel .react-flow__controls-button:last-child {
+.roadmap-canvas-controls button:last-child {
   border-bottom: none;
 }
 
-.roadmap-canvas-panel .react-flow__controls-button:hover {
+.roadmap-canvas-controls button:hover {
   background: rgba(59, 130, 246, 0.2);
   color: #93c5fd;
 }
 
-.roadmap-canvas-panel .react-flow__controls-button svg {
-  fill: currentColor;
-  max-width: 14px;
-  max-height: 14px;
+.roadmap-canvas-controls button:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: -2px;
 }
 
 /* Clear React Flow default node box */
@@ -477,10 +568,10 @@
    CUSTOM ROADMAP NODE COMPONENT
    ========================================================================== */
 .roadmap-node-card {
-  width: 270px;
+  width: 230px;
   box-sizing: border-box;
-  padding: 16px 18px;
-  border-radius: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
   position: relative;
   cursor: pointer;
   user-select: none;
@@ -523,7 +614,7 @@
 
 /* Node Title */
 .node-card-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   line-height: 1.35;
   letter-spacing: -0.015em;
@@ -533,7 +624,7 @@
 
 /* Node Description */
 .node-card-desc {
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.45;
   margin: 0;
   display: -webkit-box;
@@ -724,9 +815,9 @@
    RIGHT PANEL: SELECTED-STEP DETAILS & RESOURCES (SCROLLABLE)
    ========================================================================== */
 .roadmap-resource-panel {
-  flex: 1;
-  min-width: 320px;
-  max-width: 440px;
+  flex: 0 0 clamp(230px, 28%, 360px);
+  min-width: 0;
+  max-width: 360px;
   min-height: 0 !important;
   height: 100% !important;
   max-height: 100% !important;
@@ -734,12 +825,12 @@
   overflow-x: hidden !important;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 22px 22px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 16px;
-  background: linear-gradient(165deg, rgba(15, 23, 42, 0.75) 0%, rgba(10, 16, 28, 0.88) 100%);
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 15px;
+  background: linear-gradient(165deg, rgba(25, 33, 44, 0.94) 0%, rgba(16, 22, 31, 0.98) 100%);
   backdrop-filter: blur(14px);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -1162,7 +1253,7 @@
 /* ==========================================================================
    RESPONSIVE OVERRIDES (ENSURES EVERYTHING REMAINS SCROLLABLE ON ALL SCREENS)
    ========================================================================== */
-@media (max-width: 900px) {
+@media (max-width: 760px) {
   .roadmap-container {
     overflow-y: auto !important;
     height: auto !important;
@@ -1177,6 +1268,16 @@
     flex: none !important;
   }
 
+  .roadmap-questions-form {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .roadmap-questions-list {
+    overflow: visible;
+  }
+
   .roadmap-canvas-panel {
     height: 480px !important;
     min-height: 480px !important;
@@ -1188,6 +1289,7 @@
     flex: none !important;
     min-width: 0 !important;
     max-width: 100% !important;
+    width: 100%;
     height: auto !important;
     max-height: none !important;
     overflow-y: visible !important;
@@ -1199,7 +1301,7 @@
 }
 
 /* Small vertical viewport: allow whole page to scroll so nothing is clipped */
-@media (max-height: 640px) and (min-width: 901px) {
+@media (max-height: 640px) and (min-width: 761px) {
   .roadmap-container {
     overflow-y: auto !important;
   }

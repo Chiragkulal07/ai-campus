@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { ReactFlow, Background, Controls, useNodesState, Handle, Position } from '@xyflow/react';
+import { ReactFlow, Background, Panel, useNodesState, useReactFlow, Handle, Position } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import './roadmap.css';
 import { API_URL } from './config';
@@ -179,6 +179,45 @@ const nodeTypes = {
   default: RoadmapNode,
 };
 
+function RoadmapCanvasControls({ selectedNodeId }) {
+  const { getNode, getZoom, setCenter, fitView } = useReactFlow();
+
+  const zoomAroundSelected = (direction) => {
+    const node = selectedNodeId ? getNode(selectedNodeId) : null;
+    if (!node) {
+      fitView({ duration: 250, padding: 0.12 });
+      return;
+    }
+
+    const width = node.measured?.width || 230;
+    const height = node.measured?.height || 120;
+    const centerX = (node.positionAbsolute?.x ?? node.position.x) + width / 2;
+    const centerY = (node.positionAbsolute?.y ?? node.position.y) + height / 2;
+    const zoom = Math.min(2, Math.max(0.25, getZoom() + direction * 0.2));
+
+    setCenter(centerX, centerY, { zoom, duration: 250 });
+  };
+
+  return (
+    <Panel position="bottom-left" className="roadmap-canvas-controls">
+      <button type="button" aria-label="Zoom in on selected milestone" title="Zoom in on selected milestone" onClick={() => zoomAroundSelected(1)}>
+        +
+      </button>
+      <button type="button" aria-label="Zoom out from selected milestone" title="Zoom out from selected milestone" onClick={() => zoomAroundSelected(-1)}>
+        −
+      </button>
+      <button type="button" aria-label="Fit full roadmap" title="Fit full roadmap" onClick={() => fitView({ duration: 300, padding: 0.12 })}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+          <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+          <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+          <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+        </svg>
+      </button>
+    </Panel>
+  );
+}
+
 // Cycles through friendly status messages while the LLM/resource fetch is
 // running, so the loading screen feels alive instead of a static spinner.
 const LOADING_MESSAGES_QUESTIONS = [
@@ -298,6 +337,7 @@ function RoadmapLab({ token, onExit }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'failed to generate roadmap');
       setRoadmap(data.roadmap);
+      setSelectedNodeId(data.roadmap.nodes[0]?.id || null);
       const positions = computeLayout(data.roadmap.nodes, data.roadmap.edges);
       setNodes(data.roadmap.nodes.map((node) => ({
         id: node.id,
@@ -491,8 +531,8 @@ function RoadmapLab({ token, onExit }) {
 
       {/* Phase 2: Questions */}
       {phase === 'questions' && (
-        <div className="roadmap-form-scroll-container">
-          <form onSubmit={handleSubmitAnswers} className="roadmap-form-card" style={{ maxWidth: '580px' }}>
+        <div className="roadmap-form-scroll-container roadmap-questions-scroll">
+          <form onSubmit={handleSubmitAnswers} className="roadmap-form-card roadmap-questions-form">
             <div className="roadmap-form-header-badge">
               <span>🎯</span>
               <span>Tailor Your Experience</span>
@@ -501,24 +541,26 @@ function RoadmapLab({ token, onExit }) {
             <p className="roadmap-form-desc">
               Answer a few quick questions so we can calibrate prerequisites and pace for "{topic}".
             </p>
-            {questions.map((q, i) => (
-              <div key={i} className="roadmap-question-card">
-                <label className="roadmap-question-label">
-                  <span className="roadmap-question-idx">{i + 1}</span>
-                  <span>{q}</span>
-                </label>
-                <input
-                  className="roadmap-input-field"
-                  placeholder="Type your answer or experience level…"
-                  value={answers[i]}
-                  onChange={(e) => {
-                    const next = [...answers];
-                    next[i] = e.target.value;
-                    setAnswers(next);
-                  }}
-                />
-              </div>
-            ))}
+            <div className="roadmap-questions-list">
+              {questions.map((q, i) => (
+                <div key={i} className="roadmap-question-card">
+                  <label className="roadmap-question-label">
+                    <span className="roadmap-question-idx">{i + 1}</span>
+                    <span>{q}</span>
+                  </label>
+                  <input
+                    className="roadmap-input-field roadmap-question-input"
+                    placeholder="Type your answer or experience level…"
+                    value={answers[i]}
+                    onChange={(e) => {
+                      const next = [...answers];
+                      next[i] = e.target.value;
+                      setAnswers(next);
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
             <button type="submit" className="roadmap-primary-btn">
               <span>Build My Roadmap</span>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -598,13 +640,13 @@ function RoadmapLab({ token, onExit }) {
                 onNodesChange={onNodesChange}
                 nodesDraggable
                 fitView
-                minZoom={0.1}
+                minZoom={0.25}
                 maxZoom={2}
-                fitViewOptions={{ padding: 0.25, minZoom: 0.1, maxZoom: 2 }}
+                fitViewOptions={{ padding: 0.12, minZoom: 0.45, maxZoom: 2 }}
                 colorMode="dark"
               >
                 <Background color="rgba(59, 130, 246, 0.1)" gap={24} size={1.5} />
-                <Controls showInteractive={false} />
+                <RoadmapCanvasControls selectedNodeId={selectedNodeId} />
               </ReactFlow>
             </div>
           </div>

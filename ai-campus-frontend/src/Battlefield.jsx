@@ -19,6 +19,7 @@ const PING_INTERVAL_MS = 3000;
 function Battlefield({ token, gameId, onExit }) {
   const socketRef = useRef(null);
   const arenaRef = useRef(null);
+  const arenaViewportRef = useRef(null);
   const fireIntervalRef = useRef(null);
   const aimAngleRef = useRef(0);
   const mousePosRef = useRef({ x: 0, y: 0 });
@@ -28,6 +29,7 @@ function Battlefield({ token, gameId, onExit }) {
   const [gameInfo, setGameInfo] = useState(null);
 
   const [arenaSize, setArenaSize] = useState({ w: 1000, h: 800 });
+  const [arenaDisplaySize, setArenaDisplaySize] = useState({ w: 1000, h: 800 });
   const [walls, setWalls] = useState([]);
   const [players, setPlayers] = useState([]);
   const [msRemaining, setMsRemaining] = useState(0);
@@ -53,6 +55,29 @@ function Battlefield({ token, gameId, onExit }) {
   const animFrameRef = useRef(null);
   const predictionIntervalRef = useRef(null);
   const pingIntervalRef = useRef(null);
+
+  useEffect(() => {
+    const viewport = arenaViewportRef.current;
+    if (!viewport) return undefined;
+
+    const resizeArena = () => {
+      const { width, height } = viewport.getBoundingClientRect();
+      const scale = Math.min(1, width / arenaSize.w, height / arenaSize.h);
+      const nextSize = {
+        w: Math.floor(arenaSize.w * scale),
+        h: Math.floor(arenaSize.h * scale),
+      };
+
+      setArenaDisplaySize((current) => (
+        current.w === nextSize.w && current.h === nextSize.h ? current : nextSize
+      ));
+    };
+
+    const observer = new ResizeObserver(resizeArena);
+    observer.observe(viewport);
+    resizeArena();
+    return () => observer.disconnect();
+  }, [arenaSize]);
 
   useEffect(() => {
     try {
@@ -608,7 +633,18 @@ function Battlefield({ token, gameId, onExit }) {
   const facingLeft = Math.cos(aimAngle) < 0;
 
   return (
-    <div style={{ padding: '24px 20px', maxWidth: '1000px', margin: '0 auto', color: '#e2e8f0' }}>
+    <div style={{
+      height: '100dvh',
+      width: '100%',
+      maxWidth: '1240px',
+      margin: '0 auto',
+      padding: '12px 20px',
+      boxSizing: 'border-box',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
+      color: '#e2e8f0',
+    }}>
       <style>{`
         @keyframes bullet-fly {
           0% { transform: translate(0px, 0px); }
@@ -616,7 +652,7 @@ function Battlefield({ token, gameId, onExit }) {
         }
       `}</style>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', gap: '16px', flexShrink: 0 }}>
         <button
           onClick={onExit}
           style={{
@@ -672,33 +708,45 @@ function Battlefield({ token, gameId, onExit }) {
       )}
 
       <div
-        ref={arenaRef}
-        onMouseMove={handleMouseMove}
-        onMouseDown={(e) => { e.preventDefault(); startFiring(); }}
-        onMouseUp={stopFiring}
-        onMouseLeave={stopFiring}
-        onDoubleClick={(e) => { e.preventDefault(); fireOnce(); }}
+        ref={arenaViewportRef}
         style={{
-          position: 'relative',
+          flex: 1,
+          minHeight: 0,
           width: '100%',
-          aspectRatio: `${arenaSize.w} / ${arenaSize.h}`,
-          background: '#090d16',
-          backgroundImage: `
-            linear-gradient(rgba(99, 102, 241, 0.05) 1.5px, transparent 1.5px),
-            linear-gradient(90deg, rgba(99, 102, 241, 0.05) 1.5px, transparent 1.5px)
-          `,
-          backgroundSize: '40px 40px',
-          borderRadius: '16px',
-          overflow: 'hidden',
-          border: '1.5px solid rgba(99, 102, 241, 0.15)',
-          boxShadow: '0 20px 50px rgba(0,0,0,0.7), inset 0 0 40px rgba(99, 102, 241, 0.05)',
-          cursor: 'none',
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-          msUserSelect: 'none',
-          MozUserSelect: 'none'
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
       >
+        <div
+          ref={arenaRef}
+          onMouseMove={handleMouseMove}
+          onMouseDown={(e) => { e.preventDefault(); startFiring(); }}
+          onMouseUp={stopFiring}
+          onMouseLeave={stopFiring}
+          onDoubleClick={(e) => { e.preventDefault(); fireOnce(); }}
+          style={{
+            position: 'relative',
+            width: `${arenaDisplaySize.w}px`,
+            height: `${arenaDisplaySize.h}px`,
+            flexShrink: 0,
+            background: '#090d16',
+            backgroundImage: `
+              linear-gradient(rgba(99, 102, 241, 0.05) 1.5px, transparent 1.5px),
+              linear-gradient(90deg, rgba(99, 102, 241, 0.05) 1.5px, transparent 1.5px)
+            `,
+            backgroundSize: '40px 40px',
+            borderRadius: '16px',
+            overflow: 'hidden',
+            border: '1.5px solid rgba(99, 102, 241, 0.15)',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.7), inset 0 0 40px rgba(99, 102, 241, 0.05)',
+            cursor: 'none',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            msUserSelect: 'none',
+            MozUserSelect: 'none'
+          }}
+        >
         {walls.map((wall, i) => (
           <div
             key={i}
@@ -975,10 +1023,11 @@ function Battlefield({ token, gameId, onExit }) {
             boxShadow: `0 0 4px ${lockedPlayerId ? '#ef4444' : '#6366f1'}`
           }} />
         </div>
+        </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '16px', gap: '20px' }}>
-        <p style={{ fontSize: '13px', color: '#64748b', lineHeight: '1.6' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', gap: '20px', flexShrink: 0 }}>
+        <p style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.5', margin: 0 }}>
           ⌨️ Use <strong style={{ color: '#94a3b8' }}>W, A, S, D</strong> or arrows to move.<br />
           🖱️ Aim with mouse, hold <strong style={{ color: '#94a3b8' }}>Left Click</strong> or <strong style={{ color: '#94a3b8' }}>Spacebar</strong> to fire lasers.
         </p>
@@ -991,9 +1040,10 @@ function Battlefield({ token, gameId, onExit }) {
           background: 'rgba(15, 23, 42, 0.45)',
           backdropFilter: 'blur(8px)',
           border: '1px solid rgba(255,255,255,0.04)',
-          padding: '10px 16px',
+          padding: '8px 14px',
           borderRadius: '12px',
-          minWidth: '220px',
+          minWidth: '200px',
+          maxWidth: '42%',
           boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
         }}>
           <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.06)', width: '100%', paddingBottom: '4px', textAlign: 'right' }}>

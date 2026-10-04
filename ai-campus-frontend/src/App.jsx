@@ -437,7 +437,7 @@ function App() {
 
         {/* Gaming Lab */}
         {view === 'gaminglab' && (
-          <div style={{ height: '100%', overflowY: 'auto' }}>
+          <div style={{ height: '100%', minHeight: 0, overflow: 'hidden' }}>
             <GamingLab
               token={token}
               onEnterBattlefield={handleEnterBattlefield}

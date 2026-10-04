@@ -114,10 +114,15 @@ function GamingLab({ token, onEnterBattlefield }) {
 
   return (
     <div style={{
-      minHeight: '100%',
+      height: '100%',
+      minHeight: 0,
+      boxSizing: 'border-box',
       background: 'transparent',
       fontFamily: "'Inter', sans-serif",
-      padding: '32px 24px',
+      padding: '24px 24px 0',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
     }}>
       <style>{`
         @keyframes gl-spin { to { transform: rotate(360deg); } }
@@ -127,10 +132,18 @@ function GamingLab({ token, onEnterBattlefield }) {
         }
       `}</style>
 
-      <div style={{ maxWidth: '780px', margin: '0 auto' }}>
+      <div style={{
+        width: '100%',
+        maxWidth: '780px',
+        margin: '0 auto',
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
 
         {/* Header */}
-        <div style={{ marginBottom: '32px' }}>
+        <div style={{ marginBottom: '24px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '10px' }}>
             <div style={{
               width: '52px', height: '52px', borderRadius: '16px',
@@ -171,6 +184,7 @@ function GamingLab({ token, onEnterBattlefield }) {
           </div>
         </div>
 
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', paddingBottom: '32px' }}>
         {error && (
           <div style={{
             background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)',
@@ -402,6 +416,7 @@ function GamingLab({ token, onEnterBattlefield }) {
               </div>
             );
           })}
+        </div>
         </div>
       </div>
     </div>

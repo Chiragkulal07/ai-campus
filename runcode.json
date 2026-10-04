@@ -1,8 +1,0 @@
-{
-  "scripts": [
-    {
-      "name": "example",
-      "command": "echo \"Hello from RunCode!\""
-    }
-  ]
-}
