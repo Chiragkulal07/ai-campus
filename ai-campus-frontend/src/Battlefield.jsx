@@ -510,15 +510,17 @@ function Battlefield({ token, gameId, onExit }) {
 
     return (
       <div style={{
-        padding: '32px',
-        maxWidth: '560px',
+        padding: '36px',
+        maxWidth: '580px',
         margin: '60px auto',
-        background: 'rgba(15, 23, 42, 0.45)',
-        backdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255,255,255,0.06)',
-        borderRadius: '24px',
-        boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
-        textAlign: 'center'
+        background: 'linear-gradient(135deg, rgba(88, 28, 135, 0.25) 0%, rgba(15, 23, 42, 0.88) 100%)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        border: '1.5px solid rgba(192, 132, 252, 0.4)',
+        borderRadius: '26px',
+        boxShadow: '0 25px 70px rgba(0,0,0,0.8), 0 0 30px rgba(168, 85, 247, 0.2)',
+        textAlign: 'center',
+        fontFamily: "'Outfit', 'Inter', sans-serif"
       }}>
         <button
           onClick={onExit}
@@ -596,26 +598,27 @@ function Battlefield({ token, gameId, onExit }) {
             onClick={handleStartMatch}
             style={{
               width: '100%',
-              padding: '14px 28px',
+              padding: '16px 28px',
               borderRadius: '14px',
               cursor: 'pointer',
-              background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+              background: 'linear-gradient(135deg, #7c3aed 0%, #2563eb 50%, #06b6d4 100%)',
               border: 'none',
-              boxShadow: '0 4px 20px rgba(99, 102, 241, 0.4)',
+              boxShadow: '0 8px 25px rgba(124, 58, 237, 0.45)',
               color: '#fff',
-              fontWeight: 700,
-              fontSize: '15px',
+              fontWeight: 800,
+              fontSize: '15.5px',
+              letterSpacing: '0.3px',
               transition: 'transform 0.15s, opacity 0.15s'
             }}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.02)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
           >
-            Launch Match
+            🚀 Launch Arena Match
           </button>
         ) : (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', padding: '12px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>
-            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#64748b', animation: 'pulse 1.5s infinite' }} />
-            <p style={{ color: '#64748b', fontSize: '13px' }}>Waiting for host to launch game...</p>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', padding: '14px', background: 'rgba(255,255,255,0.03)', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#38bdf8', animation: 'spin 1.5s infinite' }} />
+            <p style={{ color: '#94a3b8', fontSize: '13.5px', margin: 0 }}>Waiting for host to launch battle...</p>
           </div>
         )}
       </div>

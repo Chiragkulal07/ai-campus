@@ -32,6 +32,7 @@ function App() {
   const socketRef = useRef(null);
   const heldKeys = useRef({ up: false, down: false, left: false, right: false });
   const [summaryDetailLabel, setSummaryDetailLabel] = useState(null);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
   // Voice + video chat hook — only becomes active once the socket is connected
   const {
@@ -149,31 +150,48 @@ function App() {
   if (loadingMe) return (
     <div style={{
       height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      background: '#060a12',
-      backgroundImage: 'radial-gradient(ellipse at 30% 20%, rgba(99,102,241,0.08) 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, rgba(59,130,246,0.06) 0%, transparent 60%)',
+      background: '#04060e',
+      backgroundImage: `
+        radial-gradient(ellipse at 50% 30%, rgba(99, 102, 241, 0.18) 0%, transparent 65%),
+        radial-gradient(circle at 80% 70%, rgba(34, 211, 238, 0.12) 0%, transparent 55%),
+        radial-gradient(circle at 20% 70%, rgba(168, 85, 247, 0.14) 0%, transparent 55%)
+      `,
+      fontFamily: "'Outfit', 'Inter', sans-serif"
     }}>
       <div style={{ textAlign: 'center', animation: 'fadeIn 0.5s ease' }}>
         <div style={{
-          width: '64px', height: '64px', borderRadius: '20px',
-          background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
-          boxShadow: '0 0 40px rgba(59,130,246,0.4)',
+          position: 'relative',
+          width: '72px', height: '72px', borderRadius: '20px',
+          background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+          boxShadow: '0 0 40px rgba(139,92,246,0.6), 0 0 20px rgba(56,189,248,0.4)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '28px', marginBottom: '24px', margin: '0 auto 24px',
-          animation: 'float 2s ease-in-out infinite',
-        }}>🎓</div>
+          fontSize: '32px', marginBottom: '24px', margin: '0 auto 24px',
+          animation: 'float 2.2s ease-in-out infinite',
+        }}>
+          🎓
+          {/* Subtle Ring */}
+          <div style={{
+            position: 'absolute', top: '-6px', left: '-6px', right: '-6px', bottom: '-6px',
+            borderRadius: '24px', border: '1.5px solid rgba(56, 189, 248, 0.5)',
+            boxShadow: '0 0 16px rgba(56, 189, 248, 0.6)',
+            animation: 'pulse-ring 2s infinite'
+          }} />
+        </div>
         <div style={{
-          width: '200px', height: '3px', background: 'rgba(255,255,255,0.06)',
+          width: '220px', height: '4px', background: 'rgba(255,255,255,0.06)',
           borderRadius: '2px', overflow: 'hidden', margin: '0 auto 16px',
         }}>
           <div style={{
             height: '100%', width: '60%',
-            background: 'linear-gradient(90deg, #3b82f6, #6366f1)',
+            background: 'linear-gradient(90deg, #c084fc, #38bdf8, #c084fc)',
             borderRadius: '2px',
             animation: 'shimmer 1.5s ease-in-out infinite',
             backgroundSize: '200% 100%',
           }} />
         </div>
-        <p style={{ color: '#475569', fontSize: '13px', fontWeight: 500, letterSpacing: '0.5px' }}>Initializing campus…</p>
+        <p style={{ color: '#94a3b8', fontSize: '13.5px', fontWeight: 600, letterSpacing: '0.8px', textTransform: 'uppercase' }}>
+          Connecting to Voxel Sky Node…
+        </p>
       </div>
       <style>{`
         @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
@@ -220,22 +238,29 @@ function App() {
         {/* Logo */}
         <div
           onClick={() => setView('campus')}
-          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '11px', cursor: 'pointer' }}
         >
           <div style={{
-            width: '34px', height: '34px', borderRadius: '10px',
-            background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
-            boxShadow: '0 0 16px rgba(59,130,246,0.4)',
+            width: '36px', height: '36px', borderRadius: '10px',
+            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            boxShadow: '0 0 20px rgba(139,92,246,0.5)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '17px', flexShrink: 0,
+            fontSize: '18px', flexShrink: 0,
           }}>🎓</div>
-          <span style={{ fontWeight: 800, fontSize: '15px', color: '#f1f5f9', letterSpacing: '-0.3px' }}>
-            Robo<span style={{ color: '#60a5fa' }}>Campus</span>
+          <span style={{ fontWeight: 800, fontSize: '16px', color: '#ffffff', letterSpacing: '-0.3px' }}>
+            Robo<span style={{ color: '#38bdf8' }}>Campus</span>
           </span>
         </div>
 
         {/* Nav tabs */}
-        <nav style={{ display: 'flex', gap: '2px', background: 'rgba(255,255,255,0.03)', padding: '4px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+        <nav style={{
+          display: 'flex', gap: '3px',
+          background: 'rgba(15, 23, 42, 0.65)',
+          padding: '4px 6px',
+          borderRadius: '14px',
+          border: '1px solid rgba(255,255,255,0.07)',
+          backdropFilter: 'blur(12px)'
+        }}>
           {NAV_TABS.map(tab => {
             const isActive = view === tab.id;
             return (
@@ -243,17 +268,24 @@ function App() {
                 key={tab.id}
                 onClick={() => setView(tab.id)}
                 style={{
-                  padding: '6px 14px', borderRadius: '9px', border: 'none',
-                  background: isActive ? 'rgba(59,130,246,0.18)' : 'transparent',
-                  color: isActive ? '#93c5fd' : '#4b5563',
-                  fontSize: '13px', fontWeight: isActive ? 700 : 500, cursor: 'pointer',
-                  transition: 'all 0.18s',
-                  outline: isActive ? '1px solid rgba(59,130,246,0.3)' : '1px solid transparent',
-                  letterSpacing: isActive ? '-0.1px' : '0',
+                  padding: '7px 15px',
+                  borderRadius: '10px',
+                  border: isActive ? '1px solid rgba(96, 165, 250, 0.6)' : '1px solid transparent',
+                  background: isActive ? 'rgba(30, 58, 138, 0.45)' : 'transparent',
+                  color: isActive ? '#93c5fd' : '#94a3b8',
+                  boxShadow: isActive ? '0 0 16px rgba(59, 130, 246, 0.4), inset 0 0 10px rgba(59, 130, 246, 0.2)' : 'none',
+                  fontSize: '13px',
+                  fontWeight: isActive ? 700 : 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.18s ease',
+                  letterSpacing: '-0.1px',
                   whiteSpace: 'nowrap',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
                 }}
-                onMouseEnter={e => { if (!isActive) e.currentTarget.style.color = '#94a3b8'; }}
-                onMouseLeave={e => { if (!isActive) e.currentTarget.style.color = '#4b5563'; }}
+                onMouseEnter={e => { if (!isActive) { e.currentTarget.style.color = '#f1f5f9'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; } }}
+                onMouseLeave={e => { if (!isActive) { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; } }}
               >
                 {tab.label}
               </button>
@@ -262,85 +294,127 @@ function App() {
         </nav>
 
         {/* User info */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', position: 'relative' }}>
           {/* Level chip */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: '6px',
-            padding: '4px 10px', borderRadius: '20px',
-            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)',
+            display: 'flex', alignItems: 'center', gap: '7px',
+            padding: '5px 12px', borderRadius: '20px',
+            background: 'rgba(15, 23, 42, 0.75)', border: '1px solid rgba(255,255,255,0.08)',
           }}>
-            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#3b82f6', boxShadow: '0 0 6px #3b82f6' }} />
-            <span style={{ color: '#94a3b8', fontSize: '11.5px', fontWeight: 600 }}>Lv.{me.profile?.level || 1}</span>
-            <span style={{ color: '#334155', fontSize: '11px' }}>·</span>
-            <span style={{ color: '#64748b', fontSize: '11px' }}>{me.profile?.xp || 0} XP</span>
+            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#38bdf8', boxShadow: '0 0 8px #38bdf8' }} />
+            <span style={{ color: '#cbd5e1', fontSize: '12px', fontWeight: 700 }}>Lv.{me.profile?.level || 1}</span>
+            <span style={{ color: '#475569', fontSize: '11px' }}>·</span>
+            <span style={{ color: '#94a3b8', fontSize: '11.5px' }}>{me.profile?.xp || 0} XP</span>
           </div>
 
-          {/* Avatar */}
-          <div style={{ position: 'relative' }}>
+          {/* Avatar button with name & color picker popover */}
+          <div
+            onClick={() => setShowAvatarPicker(prev => !prev)}
+            title="Click to change your avatar color"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
+              padding: '3px 8px 3px 3px', borderRadius: '20px',
+              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+              transition: 'all 0.15s ease'
+            }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(96, 165, 250, 0.5)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}
+          >
             <div style={{
-              width: '34px', height: '34px', borderRadius: '50%',
+              width: '32px', height: '32px', borderRadius: '50%',
               background: `radial-gradient(circle at 30% 30%, ${me.avatar?.bodyColor || '#3b82f6'}, ${me.avatar?.bodyColor || '#3b82f6'}88)`,
-              border: '2px solid rgba(255,255,255,0.12)',
-              boxShadow: `0 0 12px ${me.avatar?.bodyColor || '#3b82f6'}44`,
+              border: '2px solid rgba(255,255,255,0.2)',
+              boxShadow: `0 0 12px ${me.avatar?.bodyColor || '#3b82f6'}66`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'white', fontWeight: 800, fontSize: '14px',
+              color: 'white', fontWeight: 800, fontSize: '13px',
             }}>
               {me.displayName[0].toUpperCase()}
             </div>
+            <span style={{ color: '#f1f5f9', fontSize: '13px', fontWeight: 600, maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {me.displayName}
+            </span>
           </div>
 
-          <span style={{ color: '#cbd5e1', fontSize: '13px', fontWeight: 600, maxWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {me.displayName}
-          </span>
+          {/* Color Picker Dropdown Popover */}
+          {showAvatarPicker && (
+            <div style={{
+              position: 'absolute',
+              top: '52px',
+              right: '90px',
+              zIndex: 100,
+              background: 'rgba(10, 16, 28, 0.95)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+              border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: '16px',
+              padding: '12px 16px',
+              boxShadow: '0 16px 40px rgba(0,0,0,0.8), 0 0 20px rgba(99,102,241,0.2)',
+            }}>
+              <AvatarPicker
+                token={token}
+                currentColor={me.avatar?.bodyColor || 'dodgerblue'}
+                onUpdated={(newAvatar) => {
+                  setMe(prev => ({ ...prev, avatar: newAvatar }));
+                  if (socketRef.current) {
+                    socketRef.current.emit('identify', {
+                      displayName: me.displayName,
+                      bodyColor: newAvatar.bodyColor,
+                    });
+                  }
+                  setShowAvatarPicker(false);
+                }}
+              />
+            </div>
+          )}
 
-          {/* Mic toggle button */}
+          {/* Audio toggle button in header */}
           <button
             onClick={toggleMic}
             title={isMicOn ? 'Turn microphone off' : 'Turn microphone on'}
             style={{
               width: '34px', height: '34px', borderRadius: '50%',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: isMicOn ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.04)',
-              border: isMicOn ? '1px solid rgba(16,185,129,0.35)' : '1px solid rgba(255,255,255,0.07)',
-              color: isMicOn ? '#10b981' : '#475569',
-              fontSize: '15px', cursor: 'pointer',
-              boxShadow: isMicOn ? '0 0 0 3px rgba(16,185,129,0.12)' : 'none',
-              animation: isMicOn ? 'micPulse 1.6s ease-in-out infinite' : 'none',
+              background: isMicOn ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.04)',
+              border: isMicOn ? '1px solid rgba(16,185,129,0.45)' : '1px solid rgba(255,255,255,0.08)',
+              color: isMicOn ? '#10b981' : '#64748b',
+              fontSize: '14px', cursor: 'pointer',
               transition: 'all 0.2s',
             }}
           >
             {isMicOn ? '🎤' : '🔇'}
           </button>
 
-          {/* Video toggle button */}
+          {/* Calendar / Tasks button */}
           <button
-            onClick={toggleVideo}
-            title={isVideoOn ? 'Turn camera off' : 'Turn camera on'}
+            onClick={() => setView('summary')}
+            title="View Summary & Schedule"
             style={{
               width: '34px', height: '34px', borderRadius: '50%',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: isVideoOn ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.04)',
-              border: isVideoOn ? '1px solid rgba(59,130,246,0.35)' : '1px solid rgba(255,255,255,0.07)',
-              color: isVideoOn ? '#3b82f6' : '#475569',
-              fontSize: '15px', cursor: 'pointer',
-              boxShadow: isVideoOn ? '0 0 0 3px rgba(59,130,246,0.12)' : 'none',
-              animation: isVideoOn ? 'videoPulse 1.6s ease-in-out infinite' : 'none',
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: '#94a3b8',
+              fontSize: '14px', cursor: 'pointer',
               transition: 'all 0.2s',
             }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}
           >
-            {isVideoOn ? '📹' : '📷'}
+            📅
           </button>
 
+          {/* Logout button */}
           <button
             onClick={handleLogout}
             style={{
-              padding: '6px 12px', borderRadius: '8px',
-              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.18)',
-              color: '#f87171', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+              padding: '6px 14px', borderRadius: '9px',
+              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+              color: '#f87171', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
               transition: 'all 0.15s',
+              letterSpacing: '0.2px'
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.15)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.18)'; e.currentTarget.style.boxShadow = '0 0 12px rgba(239,68,68,0.3)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; e.currentTarget.style.boxShadow = 'none'; }}
           >
             Logout
           </button>
@@ -397,42 +471,20 @@ function App() {
 
         {/* Campus map */}
         {isOnCampus && (
-          <>
-            {/* Avatar picker HUD on campus */}
-            <div style={{
-              position: 'absolute', top: '12px', left: '50%', transform: 'translateX(-50%)',
-              zIndex: 20, background: 'rgba(8,12,20,0.85)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '14px', padding: '10px 16px',
-              backdropFilter: 'blur(12px)',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-            }}>
-              <AvatarPicker
-                token={token}
-                currentColor={me.avatar?.bodyColor || 'dodgerblue'}
-                onUpdated={(newAvatar) => {
-                  setMe(prev => ({ ...prev, avatar: newAvatar }));
-                  if (socketRef.current) {
-                    socketRef.current.emit('identify', {
-                      displayName: me.displayName,
-                      bodyColor: newAvatar.bodyColor,
-                    });
-                  }
-                }}
-              />
-            </div>
-
-            <CampusWorld
-              players={players}
-              myPlayerId={myPlayerId}
-              heldKeys={heldKeys}
-              sendMoveInput={sendMoveInput}
-              onEnterBuilding={handleEnterBuilding}
-              speakingPeerIds={speakingPeerIds}
-              remoteVideoStreams={remoteVideoStreams}
-              myVideoStream={localVideoStream}
-            />
-          </>
+          <CampusWorld
+            players={players}
+            myPlayerId={myPlayerId}
+            heldKeys={heldKeys}
+            sendMoveInput={sendMoveInput}
+            onEnterBuilding={handleEnterBuilding}
+            speakingPeerIds={speakingPeerIds}
+            remoteVideoStreams={remoteVideoStreams}
+            myVideoStream={localVideoStream}
+            isMicOn={isMicOn}
+            toggleMic={toggleMic}
+            isVideoOn={isVideoOn}
+            toggleVideo={toggleVideo}
+          />
         )}
 
         {/* Gaming Lab */}

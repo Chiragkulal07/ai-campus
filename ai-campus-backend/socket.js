@@ -177,7 +177,7 @@ function initSocket(io) {
     console.log('player joined:', socket.id);
 
     players[socket.id] = {
-      id: socket.id, x: 100, y: 100, dx: 0, dy: 0,
+      id: socket.id, x: 1040, y: 480, dx: 0, dy: 0,
       displayName: 'Guest', bodyColor: 'dodgerblue'
     };
 
