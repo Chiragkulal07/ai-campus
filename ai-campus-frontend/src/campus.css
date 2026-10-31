@@ -1,0 +1,665 @@
+/* ==========================================================================
+   Campus — lab portals & media dock
+   Each portal is tinted by --lp-rgb (set per lab in LabPortal.jsx).
+   ========================================================================== */
+
+.lp-root {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 40;
+  --lp: rgb(var(--lp-rgb));
+}
+
+/* ── Floor rig ─────────────────────────────────────────────────────────── */
+.lp-floor {
+  position: absolute;
+  left: 0;
+  top: 18px;
+}
+
+/* A circle squashed into perspective; children rotate inside it */
+.lp-floor-plane {
+  position: absolute;
+  width: 170px;
+  height: 170px;
+  left: -85px;
+  top: -85px;
+  transform: scaleY(0.34);
+}
+
+.lp-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  transition: opacity 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+}
+.lp-ring-outer {
+  border: 2px dashed rgba(var(--lp-rgb), 0.35);
+  animation: lpSpin 18s linear infinite;
+}
+.lp-ring-inner {
+  inset: 26px;
+  border: 1.5px solid rgba(var(--lp-rgb), 0.3);
+  box-shadow: 0 0 18px rgba(var(--lp-rgb), 0.25), inset 0 0 18px rgba(var(--lp-rgb), 0.15);
+  animation: lpSpin 9s linear infinite reverse;
+}
+.lp-root.is-active .lp-ring-outer {
+  border-color: rgba(var(--lp-rgb), 0.85);
+  animation-duration: 6s;
+}
+.lp-root.is-active .lp-ring-inner {
+  border-color: rgba(var(--lp-rgb), 0.95);
+  box-shadow: 0 0 36px rgba(var(--lp-rgb), 0.7), inset 0 0 28px rgba(var(--lp-rgb), 0.45);
+}
+
+/* Sonar waves expanding outward when the player is near */
+.lp-wave {
+  position: absolute;
+  inset: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(var(--lp-rgb), 0.8);
+  opacity: 0;
+}
+.lp-root.is-active .lp-wave {
+  animation: lpWave 2.4s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+  animation-delay: calc(var(--w) * 0.8s);
+}
+
+/* Rising light motes */
+.lp-motes { position: absolute; left: 0; top: 0; }
+.lp-motes span {
+  position: absolute;
+  left: calc((var(--m) - 4) * 13px);
+  top: 0;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--lp);
+  box-shadow: 0 0 6px var(--lp), 0 0 12px var(--lp);
+  opacity: 0;
+}
+.lp-root.is-active .lp-motes span {
+  animation: lpMote 2.2s ease-out infinite;
+  animation-delay: calc(var(--m) * 0.23s);
+}
+.lp-motes span:nth-child(odd) { width: 2px; height: 2px; }
+
+/* ── Beam ──────────────────────────────────────────────────────────────── */
+.lp-beam {
+  position: absolute;
+  left: -28px;
+  width: 56px;
+  top: -52px;
+  height: 70px;
+  background: linear-gradient(0deg, rgba(var(--lp-rgb), 0.35), rgba(var(--lp-rgb), 0));
+  clip-path: polygon(35% 0, 65% 0, 100% 100%, 0 100%);
+  filter: blur(2px);
+  transform-origin: bottom center;
+  transform: scaleY(0);
+  opacity: 0;
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.4s ease;
+}
+.lp-root.is-active .lp-beam { transform: scaleY(1); opacity: 1; }
+
+/* ── Holographic card ──────────────────────────────────────────────────── */
+.lp-card-anchor {
+  position: absolute;
+  left: 0;
+  bottom: 46px;
+  transform: translateX(-50%);
+}
+
+.lp-card {
+  position: relative;
+  width: 244px;
+  padding: 14px 16px 14px;
+  border-radius: 14px;
+  pointer-events: auto;
+  cursor: default;
+  color: #e7e5e4;
+  background:
+    linear-gradient(180deg, rgba(var(--lp-rgb), 0.12), rgba(var(--lp-rgb), 0) 60%),
+    rgba(17, 15, 14, 0.88);
+  border: 1px solid rgba(var(--lp-rgb), 0.35);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 18px 50px rgba(0, 0, 0, 0.6),
+    0 0 40px rgba(var(--lp-rgb), 0.22);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  overflow: hidden;
+  font-family: var(--font, 'Inter', sans-serif);
+  text-align: left;
+}
+
+/* Corner brackets that "lock on" as the card appears */
+.lp-corner {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-color: var(--lp);
+  border-style: solid;
+  border-width: 0;
+  animation: lpCornerIn 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) 0.08s backwards;
+}
+.lp-c-tl { top: 6px; left: 6px; border-top-width: 2px; border-left-width: 2px; border-top-left-radius: 4px; --cx: 14px; --cy: 14px; }
+.lp-c-tr { top: 6px; right: 6px; border-top-width: 2px; border-right-width: 2px; border-top-right-radius: 4px; --cx: -14px; --cy: 14px; }
+.lp-c-bl { bottom: 6px; left: 6px; border-bottom-width: 2px; border-left-width: 2px; border-bottom-left-radius: 4px; --cx: 14px; --cy: -14px; }
+.lp-c-br { bottom: 6px; right: 6px; border-bottom-width: 2px; border-right-width: 2px; border-bottom-right-radius: 4px; --cx: -14px; --cy: -14px; }
+
+/* Scanline that sweeps once on open, then idles slowly */
+.lp-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 40%;
+  background: linear-gradient(180deg, rgba(var(--lp-rgb), 0), rgba(var(--lp-rgb), 0.16), rgba(var(--lp-rgb), 0));
+  pointer-events: none;
+  animation: lpScan 3.2s cubic-bezier(0.4, 0, 0.2, 1) 0.1s infinite;
+}
+
+.lp-head { display: flex; align-items: center; gap: 12px; position: relative; }
+
+.lp-emblem {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(var(--lp-rgb), 0.1);
+  border: 1px solid rgba(var(--lp-rgb), 0.3);
+}
+
+.lp-kicker {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lp);
+  animation: lpTextIn 0.5s ease 0.15s backwards;
+}
+.lp-title {
+  font-family: var(--font-serif, 'Instrument Serif', Georgia, serif);
+  font-size: 24px;
+  line-height: 1.05;
+  color: #f5f5f4;
+  animation: lpTextIn 0.5s ease 0.22s backwards;
+}
+.lp-desc {
+  position: relative;
+  margin: 8px 0 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #a8a29e;
+  animation: lpTextIn 0.5s ease 0.3s backwards;
+}
+
+.lp-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  animation: lpTextIn 0.5s ease 0.38s backwards;
+}
+
+.lp-enter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #120f0d;
+  background: var(--lp);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 6px 18px rgba(var(--lp-rgb), 0.35);
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.18s ease, filter 0.18s ease;
+}
+.lp-enter svg { transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.lp-enter:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.4) inset, 0 10px 26px rgba(var(--lp-rgb), 0.5);
+}
+.lp-enter:hover svg { transform: translateX(3px); }
+.lp-enter:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.lp-hint { font-size: 12px; color: #78716c; white-space: nowrap; }
+.lp-hint kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 5px;
+  border: 1px solid rgba(var(--lp-rgb), 0.45);
+  border-bottom-width: 2px;
+  background: rgba(var(--lp-rgb), 0.08);
+  color: var(--lp);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  animation: lpKey 1.8s ease-in-out 0.8s infinite;
+}
+
+/* ── Emblems ───────────────────────────────────────────────────────────── */
+.lp-motif { width: 30px; height: 30px; overflow: visible; }
+
+.lp-ch-ring {
+  fill: none;
+  stroke: var(--lp);
+  stroke-width: 2;
+  stroke-dasharray: 10 6;
+  transform-origin: 20px 20px;
+  animation: lpSpin 4s linear infinite;
+}
+.lp-ch-inner { fill: none; stroke: rgba(var(--lp-rgb), 0.5); stroke-width: 1.5; }
+.lp-ch-ticks {
+  fill: none;
+  stroke: var(--lp);
+  stroke-width: 2;
+  stroke-linecap: round;
+  transform-origin: 20px 20px;
+  animation: lpTickBreath 1.6s ease-in-out infinite;
+}
+.lp-ch-core {
+  fill: var(--lp);
+  transform-origin: 20px 20px;
+  animation: lpCore 1.6s ease-in-out infinite;
+}
+
+.lp-path-track { fill: none; stroke: rgba(var(--lp-rgb), 0.18); stroke-width: 2; stroke-dasharray: 2 3; }
+.lp-path-line {
+  fill: none;
+  stroke: var(--lp);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  animation: lpPathDraw 2.6s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+.lp-path-node {
+  fill: #171412;
+  stroke: rgba(var(--lp-rgb), 0.45);
+  stroke-width: 1.6;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lpPathNode 2.6s ease infinite;
+  animation-delay: calc(var(--n) * 0.45s);
+}
+
+/* ==========================================================================
+   Media dock (mic / camera) — sits under the player's feet
+   ========================================================================== */
+.md-dock {
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(17, 15, 14, 0.86);
+  border: 1px solid rgba(231, 229, 228, 0.14);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  pointer-events: auto;
+  transition: left 0.1s linear, top 0.1s linear;
+  animation: mdIn 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.md-sep { width: 1px; height: 14px; background: rgba(231, 229, 228, 0.12); }
+
+.md-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 7px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #a8a29e;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 600;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.md-btn:hover { background: rgba(231, 229, 228, 0.08); color: #f5f5f4; }
+.md-btn:focus-visible { outline: 2px solid #f59e0b; outline-offset: 1px; }
+
+/* Label slides out on hover */
+.md-label {
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+  transition: max-width 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease;
+}
+.md-btn:hover .md-label, .md-btn:focus-visible .md-label { max-width: 44px; opacity: 1; }
+
+/* Mic live: green with a level meter */
+.md-mic-live { color: #6ee7b7; background: rgba(52, 211, 153, 0.12); }
+.md-mic-live:hover { color: #a7f3d0; background: rgba(52, 211, 153, 0.18); }
+.md-meter { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; }
+.md-meter i {
+  display: block;
+  width: 2px;
+  height: 100%;
+  border-radius: 2px;
+  background: currentColor;
+  transform-origin: bottom;
+  animation: mdLevel 0.9s ease-in-out infinite;
+}
+.md-meter i:nth-child(2) { animation-delay: 0.15s; animation-duration: 0.7s; }
+.md-meter i:nth-child(3) { animation-delay: 0.3s; animation-duration: 1.1s; }
+
+/* Camera live: amber with a recording dot */
+.md-cam-live { color: #fcd34d; background: rgba(245, 158, 11, 0.14); }
+.md-cam-live:hover { color: #fde68a; background: rgba(245, 158, 11, 0.2); }
+.md-rec {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f87171;
+  box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.6);
+  animation: mdRec 1.6s ease-out infinite;
+}
+
+/* ── Keyframes ─────────────────────────────────────────────────────────── */
+@keyframes lpSpin { to { transform: rotate(360deg); } }
+@keyframes lpWave {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(2.1); opacity: 0; }
+}
+@keyframes lpMote {
+  0% { transform: translateY(0) scale(0.6); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translateY(-95px) scale(1); opacity: 0; }
+}
+@keyframes lpCornerIn {
+  from { transform: translate(var(--cx), var(--cy)); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes lpScan {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 1; }
+  45%, 100% { transform: translateY(260%); opacity: 0; }
+}
+@keyframes lpTextIn {
+  from { opacity: 0; transform: translateY(6px); filter: blur(3px); }
+  to { opacity: 1; transform: none; filter: blur(0); }
+}
+@keyframes lpKey {
+  0%, 70%, 100% { transform: translateY(0); border-bottom-width: 2px; }
+  80% { transform: translateY(1px); border-bottom-width: 1px; }
+}
+@keyframes lpTickBreath {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(0.88); opacity: 1; }
+}
+@keyframes lpCore {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.6); opacity: 0.6; }
+}
+@keyframes lpPathDraw {
+  0% { stroke-dashoffset: 100; opacity: 1; }
+  65% { stroke-dashoffset: 0; opacity: 1; }
+  85%, 100% { stroke-dashoffset: 0; opacity: 0; }
+}
+@keyframes lpPathNode {
+  0%, 5% { fill: #171412; stroke: rgba(var(--lp-rgb), 0.45); transform: scale(1); }
+  15% { fill: var(--lp); stroke: var(--lp); transform: scale(1.35); }
+  25%, 75% { fill: var(--lp); stroke: var(--lp); transform: scale(1); }
+  90%, 100% { fill: #171412; stroke: rgba(var(--lp-rgb), 0.45); transform: scale(1); }
+}
+@keyframes mdIn {
+  from { opacity: 0; transform: translate(-50%, 6px) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+@keyframes mdLevel {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+@keyframes mdRec {
+  0% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.6); }
+  70%, 100% { box-shadow: 0 0 0 6px rgba(248, 113, 113, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-root *, .md-dock, .md-dock * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+  }
+}
+
+/* ==========================================================================
+   Far-away interactivity: proximity glow, hover hotspot, distance beacon,
+   guide route. --prox goes 0 (far) → 1 (at the entrance).
+   ========================================================================== */
+
+/* Ring + glow strengthen continuously as the player approaches */
+.lp-ring-outer { border-color: rgba(var(--lp-rgb), calc(0.22 + var(--prox, 0) * 0.5)); }
+.lp-ring-inner {
+  border-color: rgba(var(--lp-rgb), calc(0.25 + var(--prox, 0) * 0.55));
+  box-shadow: 0 0 calc(12px + var(--prox, 0) * 26px) rgba(var(--lp-rgb), calc(0.2 + var(--prox, 0) * 0.4)),
+    inset 0 0 18px rgba(var(--lp-rgb), 0.15);
+}
+
+.lp-glow {
+  position: absolute;
+  left: -130px;
+  top: -22px;
+  width: 260px;
+  height: 84px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(var(--lp-rgb), 0.55), rgba(var(--lp-rgb), 0));
+  opacity: calc(0.12 + var(--prox, 0) * 0.45);
+  transition: opacity 0.5s ease;
+  pointer-events: none;
+}
+.lp-root.is-hovered .lp-glow,
+.lp-root.is-travelling .lp-glow { opacity: 0.75; animation: lpGlowBreath 1.8s ease-in-out infinite; }
+
+.lp-root.is-hovered .lp-ring-outer,
+.lp-root.is-travelling .lp-ring-outer { border-color: rgba(var(--lp-rgb), 0.9); animation-duration: 5s; }
+.lp-root.is-hovered .lp-ring-inner,
+.lp-root.is-travelling .lp-ring-inner {
+  border-color: rgba(var(--lp-rgb), 1);
+  box-shadow: 0 0 36px rgba(var(--lp-rgb), 0.7), inset 0 0 26px rgba(var(--lp-rgb), 0.4);
+}
+.lp-root.is-hovered .lp-motes span,
+.lp-root.is-travelling .lp-motes span {
+  animation: lpMote 2.2s ease-out infinite;
+  animation-delay: calc(var(--m) * 0.23s);
+}
+
+/* Hover target over the building itself */
+.lp-hotspot {
+  position: absolute;
+  left: -115px;
+  top: -205px;
+  width: 230px;
+  height: 240px;
+  border-radius: 40%;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+/* ── Distance beacon ──────────────────────────────────────────────────── */
+.lp-beacon-anchor {
+  position: absolute;
+  left: 0;
+  top: 54px;
+  transform: translateX(-50%);
+  animation: lpBob 3.2s ease-in-out infinite;
+}
+
+.lp-beacon {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 12px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(var(--lp-rgb), calc(0.22 + var(--prox, 0) * 0.4));
+  background: rgba(17, 15, 14, 0.82);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5), 0 0 22px rgba(var(--lp-rgb), calc(var(--prox, 0) * 0.25));
+  color: #e7e5e4;
+  font-family: var(--font, 'Inter', sans-serif);
+  text-align: left;
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+}
+.lp-root.is-hovered .lp-beacon,
+.lp-root.is-travelling .lp-beacon {
+  border-color: rgba(var(--lp-rgb), 0.85);
+  background: rgba(23, 20, 18, 0.92);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55), 0 0 28px rgba(var(--lp-rgb), 0.35);
+}
+.lp-beacon:focus-visible { outline: 2px solid rgb(var(--lp-rgb)); outline-offset: 2px; }
+
+.lp-beacon-ring {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lp-beacon-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.lp-beacon-track { fill: none; stroke: rgba(231, 229, 228, 0.1); stroke-width: 2.5; }
+.lp-beacon-fill {
+  fill: none;
+  stroke: rgb(var(--lp-rgb));
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.35s ease;
+  filter: drop-shadow(0 0 3px rgba(var(--lp-rgb), 0.7));
+}
+.lp-beacon-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(var(--lp-rgb));
+  box-shadow: 0 0 0 0 rgba(var(--lp-rgb), 0.6);
+  animation: lpDotPing 2s ease-out infinite;
+}
+
+.lp-beacon-text { display: flex; flex-direction: column; line-height: 1.2; }
+.lp-beacon-name { font-size: 12.5px; font-weight: 600; color: #f5f5f4; }
+.lp-beacon-meta {
+  font-size: 11px;
+  color: #a8a29e;
+  font-variant-numeric: tabular-nums;
+  transition: color 0.2s ease;
+}
+.lp-root.is-travelling .lp-beacon-meta { color: rgb(var(--lp-rgb)); }
+
+.lp-beacon-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 0;
+  margin-left: -9px;
+  overflow: hidden;
+  opacity: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgb(var(--lp-rgb));
+  transition: max-width 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease, margin 0.3s ease;
+}
+.lp-root.is-hovered .lp-beacon-cta {
+  max-width: 90px;
+  margin-left: 2px;
+  opacity: 1;
+}
+.lp-root.is-hovered .lp-beacon-cta svg { animation: lpNudge 0.9s ease-in-out infinite; }
+
+/* ── Guide route from the player to a lab ─────────────────────────────── */
+.campus-route {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 30;
+  overflow: visible;
+  animation: lpRouteIn 0.35s ease both;
+}
+.campus-route-glow {
+  fill: none;
+  stroke: rgba(var(--lp-rgb), 0.18);
+  stroke-width: 10;
+  stroke-linecap: round;
+  filter: blur(3px);
+}
+.campus-route-line {
+  fill: none;
+  stroke: rgba(var(--lp-rgb), 0.9);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 1 11;
+  animation: lpMarch 0.8s linear infinite;
+}
+.campus-route.is-travelling .campus-route-line { stroke-dasharray: 1 9; animation-duration: 0.5s; }
+.campus-route-comet {
+  fill: #fff;
+  filter: drop-shadow(0 0 4px rgb(var(--lp-rgb))) drop-shadow(0 0 8px rgb(var(--lp-rgb)));
+}
+.campus-route-end {
+  fill: none;
+  stroke: rgb(var(--lp-rgb));
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: lpEndPulse 1.4s ease-out infinite;
+}
+
+@keyframes lpBob {
+  0%, 100% { transform: translate(-50%, 0); }
+  50% { transform: translate(-50%, -4px); }
+}
+@keyframes lpDotPing {
+  0% { box-shadow: 0 0 0 0 rgba(var(--lp-rgb), 0.6); }
+  70%, 100% { box-shadow: 0 0 0 7px rgba(var(--lp-rgb), 0); }
+}
+@keyframes lpGlowBreath {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+@keyframes lpNudge {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(3px); }
+}
+@keyframes lpMarch { to { stroke-dashoffset: -12; } }
+@keyframes lpEndPulse {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+@keyframes lpRouteIn { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-beacon-anchor, .campus-route, .campus-route * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

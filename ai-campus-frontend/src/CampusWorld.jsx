@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import PlayerCharacter from './PlayerCharacter';
+import LabPortal from './LabPortal';
+import MediaDock from './MediaDock';
 import voxelBg from './assets/voxel_world_2x.png';
 
 // World virtual dimensions based on the 2x upscaled voxel art
@@ -11,6 +12,16 @@ const WORLD_HEIGHT = 890;
 const GAMING_LAB_POS = { x: 550, y: 390 };
 const ROADMAP_LAB_POS = { x: 1530, y: 470 };
 const SPAWN_POS = { x: 1040, y: 480 };
+
+const ENTER_RADIUS = 260;          // distance at which a lab's entry card appears
+const AWARE_RANGE = 900;           // beyond ENTER_RADIUS + this, a lab is at minimum glow
+const LAB_RGB = { gaminglab: '251, 146, 60', roadmaplab: '94, 234, 212' };
+const LAB_POS = { gaminglab: GAMING_LAB_POS, roadmaplab: ROADMAP_LAB_POS };
+
+// 0 when far away, 1 at the entry radius — drives the gradual glow.
+const proximity = (dist) => Math.max(0, Math.min(1, 1 - (dist - ENTER_RADIUS) / AWARE_RANGE));
+// Friendly distance to the entry point, in "metres".
+const metresAway = (dist) => Math.max(0, Math.round((dist - ENTER_RADIUS) / 12));
 
 function CampusWorld({
   players = [],
@@ -27,33 +38,52 @@ function CampusWorld({
   toggleVideo = () => {}
 }) {
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
+  const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const playerOriginsRef = useRef({});
   const clickTargetRef = useRef(null);
   const clickIntervalRef = useRef(null);
   const myPlayerRef = useRef(SPAWN_POS);
 
-  // Resize handler
+  // Track the container size (the area below the app header), so the camera
+  // centers the player in the visible area rather than the whole window.
   useEffect(() => {
-    const handleResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const el = containerRef.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const { width, height } = el.getBoundingClientRect();
+      setViewport((v) => (v.w === width && v.h === height ? v : { w: width, h: height }));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
+
+  const [hoveredLab, setHoveredLab] = useState(null); // lab being previewed (hover)
+  const [travelLab, setTravelLab] = useState(null);   // lab we are auto-walking to
 
   // Stop automated click-move pathing
   const stopClickMove = useCallback(() => {
     clickTargetRef.current = null;
+    setTravelLab(null);
     if (clickIntervalRef.current) {
       clearInterval(clickIntervalRef.current);
       clickIntervalRef.current = null;
     }
   }, []);
 
-  // Clean up click timer on unmount
+  // Clean up click timer on unmount and release any keys it was holding
   useEffect(() => {
     return () => {
-      if (clickIntervalRef.current) clearInterval(clickIntervalRef.current);
+      if (clickIntervalRef.current) {
+        clearInterval(clickIntervalRef.current);
+        clickIntervalRef.current = null;
+        heldKeys.current = { up: false, down: false, left: false, right: false };
+        sendMoveInput();
+      }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Map player coordinates between legacy backend (centered around 100, 100)
@@ -133,8 +163,8 @@ function CampusWorld({
   // Distance checks for interactive terminals
   const distToGaming = Math.hypot(myPlayer.x - GAMING_LAB_POS.x, myPlayer.y - GAMING_LAB_POS.y);
   const distToRoadmap = Math.hypot(myPlayer.x - ROADMAP_LAB_POS.x, myPlayer.y - ROADMAP_LAB_POS.y);
-  const isNearGaming = distToGaming < 260;
-  const isNearRoadmap = distToRoadmap < 260;
+  const isNearGaming = distToGaming < ENTER_RADIUS;
+  const isNearRoadmap = distToRoadmap < ENTER_RADIUS;
 
   // Keyboard shortcut to enter building when near & cancel click-move on key press
   useEffect(() => {
@@ -143,6 +173,7 @@ function CampusWorld({
       if (['w', 'a', 's', 'd', 'W', 'A', 'S', 'D', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
         stopClickMove();
       }
+      if (e.repeat || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target?.tagName)) return;
       if (e.key === 'Enter' || e.key === 'e' || e.key === 'E') {
         if (isNearGaming) {
           onEnterBuilding('gaminglab', 'Gaming Lab');
@@ -204,26 +235,21 @@ function CampusWorld({
     return () => cancelAnimationFrame(animId);
   }, []);
 
-  // Click-to-move support on the world plane
-  const handleWorldClick = useCallback((e) => {
-    if (e.target.closest('button')) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = (e.clientX - rect.left) / scale;
-    const clickY = (e.clientY - rect.top) / scale;
-
-    clickTargetRef.current = { x: clickX, y: clickY };
-
+  // Walk the player toward a world-space target by simulating held keys.
+  const walkTo = useCallback((target, { stopRadius = 24, labId = null } = {}) => {
+    clickTargetRef.current = target;
+    setTravelLab(labId);
     if (clickIntervalRef.current) clearInterval(clickIntervalRef.current);
 
     const step = () => {
-      const target = clickTargetRef.current;
-      if (!target) return;
+      const t = clickTargetRef.current;
+      if (!t) return;
       const current = myPlayerRef.current;
-      const dx = target.x - current.x;
-      const dy = target.y - current.y;
+      const dx = t.x - current.x;
+      const dy = t.y - current.y;
       const dist = Math.hypot(dx, dy);
 
-      if (dist < 24) {
+      if (dist < stopRadius) {
         stopClickMove();
         heldKeys.current.right = false;
         heldKeys.current.left = false;
@@ -242,48 +268,40 @@ function CampusWorld({
 
     step();
     clickIntervalRef.current = setInterval(step, 80);
-  }, [scale, sendMoveInput, stopClickMove, heldKeys]);
+  }, [sendMoveInput, stopClickMove, heldKeys]);
+
+  // Click-to-move support on the world plane
+  const handleWorldClick = useCallback((e) => {
+    if (e.target.closest('button, .lp-hotspot')) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    walkTo({ x: (e.clientX - rect.left) / scale, y: (e.clientY - rect.top) / scale });
+  }, [scale, walkTo]);
+
+  // Walk to a lab's entrance; stops once inside its entry radius.
+  const travelToLab = useCallback((labId) => {
+    const pos = LAB_POS[labId];
+    setHoveredLab(null);
+    walkTo({ x: pos.x, y: pos.y + 18 }, { stopRadius: 120, labId });
+  }, [walkTo]);
 
   // D-pad button builder
-  const btnBase = {
-    width: '42px',
-    height: '42px',
-    fontSize: '15px',
-    cursor: 'pointer',
-    background: 'rgba(15, 23, 42, 0.75)',
-    border: '1px solid rgba(255,255,255,0.1)',
-    borderRadius: '10px',
-    color: '#94a3b8',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    boxShadow: '0 4px 15px rgba(0,0,0,0.4)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'all 0.15s',
-    userSelect: 'none',
-    outline: 'none'
-  };
-
   const makeBtn = (key, label) => ({
     type: 'button',
+    className: 'campus-dpad-btn',
+    'aria-label': `Move ${key}`,
     onMouseDown:  () => { stopClickMove(); heldKeys.current[key] = true;  sendMoveInput(); },
     onMouseUp:    () => { heldKeys.current[key] = false; sendMoveInput(); },
     onMouseLeave: () => { heldKeys.current[key] = false; sendMoveInput(); },
     onTouchStart: (e) => { e.preventDefault(); stopClickMove(); heldKeys.current[key] = true;  sendMoveInput(); },
     onTouchEnd:   () => { heldKeys.current[key] = false; sendMoveInput(); },
     onTouchCancel: () => { heldKeys.current[key] = false; sendMoveInput(); },
-    style: btnBase,
     children: label,
   });
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      width: '100vw',
-      height: '100vh',
+    <div ref={containerRef} style={{
+      position: 'absolute',
+      inset: 0,
       overflow: 'hidden',
       zIndex: 0,
       backgroundColor: '#04060e',
@@ -294,103 +312,6 @@ function CampusWorld({
       `,
     }}>
 
-      {/* Floating Video & Mic Controls (Top Left under Nav Bar) */}
-      <div style={{
-        position: 'fixed',
-        top: '74px',
-        left: '28px',
-        zIndex: 60,
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        pointerEvents: 'auto'
-      }}>
-        {/* Video Toggle Button */}
-        <button
-          onClick={toggleVideo}
-          title={isVideoOn ? "Turn camera off" : "Turn camera on"}
-          style={{
-            width: '46px',
-            height: '46px',
-            borderRadius: '50%',
-            background: isVideoOn ? 'rgba(59, 130, 246, 0.25)' : 'rgba(15, 23, 42, 0.75)',
-            border: isVideoOn ? '2px solid #38bdf8' : '1.5px solid rgba(168, 85, 247, 0.5)',
-            boxShadow: isVideoOn
-              ? '0 0 18px rgba(56, 189, 248, 0.7), inset 0 0 10px rgba(56, 189, 248, 0.4)'
-              : '0 4px 16px rgba(0,0,0,0.5), 0 0 12px rgba(168, 85, 247, 0.3)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-            color: '#ffffff',
-            outline: 'none'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'scale(1.08)';
-            e.currentTarget.style.borderColor = '#c084fc';
-            e.currentTarget.style.boxShadow = '0 0 20px rgba(192, 132, 252, 0.6)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'scale(1)';
-            e.currentTarget.style.borderColor = isVideoOn ? '#38bdf8' : 'rgba(168, 85, 247, 0.5)';
-            e.currentTarget.style.boxShadow = isVideoOn
-              ? '0 0 18px rgba(56, 189, 248, 0.7)'
-              : '0 4px 16px rgba(0,0,0,0.5), 0 0 12px rgba(168, 85, 247, 0.3)';
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="23 7 16 12 23 17 23 7" />
-            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-          </svg>
-        </button>
-
-        {/* Microphone Toggle Button */}
-        <button
-          onClick={toggleMic}
-          title={isMicOn ? "Turn microphone off" : "Turn microphone on"}
-          style={{
-            width: '46px',
-            height: '46px',
-            borderRadius: '50%',
-            background: isMicOn ? 'rgba(16, 185, 129, 0.25)' : 'rgba(15, 23, 42, 0.75)',
-            border: isMicOn ? '2px solid #34d399' : '1.5px solid rgba(168, 85, 247, 0.5)',
-            boxShadow: isMicOn
-              ? '0 0 18px rgba(52, 211, 153, 0.7), inset 0 0 10px rgba(52, 211, 153, 0.4)'
-              : '0 4px 16px rgba(0,0,0,0.5), 0 0 12px rgba(168, 85, 247, 0.3)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-            color: '#ffffff',
-            outline: 'none'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'scale(1.08)';
-            e.currentTarget.style.borderColor = '#c084fc';
-            e.currentTarget.style.boxShadow = '0 0 20px rgba(192, 132, 252, 0.6)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'scale(1)';
-            e.currentTarget.style.borderColor = isMicOn ? '#34d399' : 'rgba(168, 85, 247, 0.5)';
-            e.currentTarget.style.boxShadow = isMicOn
-              ? '0 0 18px rgba(52, 211, 153, 0.7)'
-              : '0 4px 16px rgba(0,0,0,0.5), 0 0 12px rgba(168, 85, 247, 0.3)';
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="23" />
-            <line x1="8" y1="23" x2="16" y2="23" />
-          </svg>
-        </button>
-      </div>
 
       {/* Main Diorama World Plane */}
       <div
@@ -427,167 +348,63 @@ function CampusWorld({
           }}
         />
 
-        {/* ── Left Island: Gaming Lab Proximity Prompt & Platform Pulse ── */}
-        <div style={{
-          position: 'absolute',
-          left: GAMING_LAB_POS.x,
-          top: GAMING_LAB_POS.y,
-          transform: 'translate(-50%, -50%)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          pointerEvents: 'none',
-          zIndex: 40
-        }}>
-          {/* Subtle Dais Energy Ring on Platform Floor (Pulses gently) */}
-          <div style={{
-            position: 'absolute',
-            bottom: '-40px',
-            width: '140px',
-            height: '46px',
-            borderRadius: '50%',
-            border: isNearGaming ? '2px solid rgba(192, 132, 252, 0.9)' : '1.5px solid rgba(168, 85, 247, 0.4)',
-            boxShadow: isNearGaming
-              ? '0 0 30px rgba(168, 85, 247, 0.95), inset 0 0 20px rgba(168, 85, 247, 0.6)'
-              : '0 0 15px rgba(168, 85, 247, 0.4)',
-            animation: 'pulseDais 2.5s ease-in-out infinite alternate',
-            transition: 'all 0.3s ease',
-            zIndex: 2
-          }} />
+        {/* ── Lab portals: floor rig + holographic card when the player is near ── */}
+        {/* Guide route: previews the way to a hovered lab, and shows it while travelling */}
+        {(() => {
+          const routeLab = travelLab || hoveredLab;
+          if (!routeLab) return null;
+          const near = routeLab === 'gaminglab' ? isNearGaming : isNearRoadmap;
+          if (near) return null;
+          const to = LAB_POS[routeLab];
+          const fx = myPlayer.x, fy = myPlayer.y + 10;
+          const tx = to.x, ty = to.y + 18;
+          const cx = (fx + tx) / 2, cy = Math.min(fy, ty) - Math.abs(tx - fx) * 0.12 - 30;
+          const d = `M ${fx} ${fy} Q ${cx} ${cy} ${tx} ${ty}`;
+          return (
+            <svg
+              className={`campus-route ${travelLab ? 'is-travelling' : ''}`}
+              style={{ '--lp-rgb': LAB_RGB[routeLab] }}
+              width={WORLD_WIDTH}
+              height={WORLD_HEIGHT}
+              viewBox={`0 0 ${WORLD_WIDTH} ${WORLD_HEIGHT}`}
+              aria-hidden="true"
+            >
+              <path className="campus-route-glow" d={d} />
+              <path className="campus-route-line" d={d} />
+              <circle className="campus-route-comet" r="4">
+                <animateMotion dur="1.6s" repeatCount="indefinite" path={d} />
+              </circle>
+              <circle className="campus-route-end" cx={tx} cy={ty} r="7" />
+            </svg>
+          );
+        })()}
 
-          {/* Interactive Proximity Action Prompt */}
-          <AnimatePresence>
-            {isNearGaming && (
-              <motion.div
-                initial={{ opacity: 0, y: 15, scale: 0.9 }}
-                animate={{ opacity: 1, y: -70, scale: 1 }}
-                exit={{ opacity: 0, y: 15, scale: 0.9 }}
-                transition={{ duration: 0.18 }}
-                style={{
-                  position: 'absolute',
-                  zIndex: 100,
-                  pointerEvents: 'auto'
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEnterBuilding('gaminglab', 'Gaming Lab');
-                  }}
-                  style={{
-                    padding: '11px 26px',
-                    fontSize: '13.5px',
-                    fontWeight: 800,
-                    letterSpacing: '0.4px',
-                    backgroundColor: '#ffffff',
-                    color: '#4c1d95',
-                    border: 'none',
-                    borderRadius: '12px',
-                    cursor: 'pointer',
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.7), 0 0 30px rgba(192, 132, 252, 0.85)',
-                    whiteSpace: 'nowrap',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    transition: 'all 0.15s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'scale(1.06)';
-                    e.currentTarget.style.boxShadow = '0 12px 35px rgba(0,0,0,0.8), 0 0 38px rgba(255,255,255,0.95)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'scale(1)';
-                    e.currentTarget.style.boxShadow = '0 10px 30px rgba(0,0,0,0.7), 0 0 30px rgba(192, 132, 252, 0.85)';
-                  }}
-                >
-                  <span style={{ fontSize: '16px' }}>⚡</span> Enter Gaming Lab
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* ── Right Island: Roadmap Lab Proximity Prompt & Platform Pulse ── */}
-        <div style={{
-          position: 'absolute',
-          left: ROADMAP_LAB_POS.x,
-          top: ROADMAP_LAB_POS.y,
-          transform: 'translate(-50%, -50%)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          pointerEvents: 'none',
-          zIndex: 40
-        }}>
-          {/* Subtle Dais Energy Ring on Platform Floor (Pulses gently) */}
-          <div style={{
-            position: 'absolute',
-            bottom: '-40px',
-            width: '140px',
-            height: '46px',
-            borderRadius: '50%',
-            border: isNearRoadmap ? '2px solid rgba(34, 211, 238, 0.9)' : '1.5px solid rgba(6, 182, 212, 0.4)',
-            boxShadow: isNearRoadmap
-              ? '0 0 30px rgba(34, 211, 238, 0.95), inset 0 0 20px rgba(34, 211, 238, 0.6)'
-              : '0 0 15px rgba(34, 211, 238, 0.4)',
-            animation: 'pulseDaisCyan 2.5s ease-in-out infinite alternate',
-            transition: 'all 0.3s ease',
-            zIndex: 2
-          }} />
-
-          {/* Interactive Proximity Action Prompt */}
-          <AnimatePresence>
-            {isNearRoadmap && (
-              <motion.div
-                initial={{ opacity: 0, y: 15, scale: 0.9 }}
-                animate={{ opacity: 1, y: -70, scale: 1 }}
-                exit={{ opacity: 0, y: 15, scale: 0.9 }}
-                transition={{ duration: 0.18 }}
-                style={{
-                  position: 'absolute',
-                  zIndex: 100,
-                  pointerEvents: 'auto'
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEnterBuilding('roadmaplab', 'Roadmap Lab');
-                  }}
-                  style={{
-                    padding: '11px 26px',
-                    fontSize: '13.5px',
-                    fontWeight: 800,
-                    letterSpacing: '0.4px',
-                    backgroundColor: '#ffffff',
-                    color: '#0e7490',
-                    border: 'none',
-                    borderRadius: '12px',
-                    cursor: 'pointer',
-                    boxShadow: '0 10px 30px rgba(0,0,0,0.7), 0 0 30px rgba(34, 211, 238, 0.85)',
-                    whiteSpace: 'nowrap',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    transition: 'all 0.15s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'scale(1.06)';
-                    e.currentTarget.style.boxShadow = '0 12px 35px rgba(0,0,0,0.8), 0 0 38px rgba(255,255,255,0.95)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'scale(1)';
-                    e.currentTarget.style.boxShadow = '0 10px 30px rgba(0,0,0,0.7), 0 0 30px rgba(34, 211, 238, 0.85)';
-                  }}
-                >
-                  <span style={{ fontSize: '16px' }}>⚡</span> Enter Roadmap Lab
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        <LabPortal
+          lab="gaminglab"
+          x={GAMING_LAB_POS.x}
+          y={GAMING_LAB_POS.y}
+          active={isNearGaming}
+          prox={proximity(distToGaming)}
+          metres={metresAway(distToGaming)}
+          hovered={hoveredLab === 'gaminglab'}
+          travelling={travelLab === 'gaminglab'}
+          onHover={(on) => setHoveredLab(on ? 'gaminglab' : null)}
+          onTravel={() => travelToLab('gaminglab')}
+          onEnter={() => onEnterBuilding('gaminglab', 'Gaming Lab')}
+        />
+        <LabPortal
+          lab="roadmaplab"
+          x={ROADMAP_LAB_POS.x}
+          y={ROADMAP_LAB_POS.y}
+          active={isNearRoadmap && !isNearGaming}
+          prox={proximity(distToRoadmap)}
+          metres={metresAway(distToRoadmap)}
+          hovered={hoveredLab === 'roadmaplab'}
+          travelling={travelLab === 'roadmaplab'}
+          onHover={(on) => setHoveredLab(on ? 'roadmaplab' : null)}
+          onTravel={() => travelToLab('roadmaplab')}
+          onEnter={() => onEnterBuilding('roadmaplab', 'Roadmap Lab')}
+        />
 
         {/* ── Central Circular Hub & Portal Floor Ring ── */}
         <div style={{
@@ -632,65 +449,82 @@ function CampusWorld({
             />
           );
         })}
+
+        {/* ── Mic & camera dock, just under MY character's feet ── */}
+        {myPlayerId && (
+          <MediaDock
+            x={myPlayer.x}
+            y={myPlayer.y + 24}
+            isMicOn={isMicOn}
+            isVideoOn={isVideoOn}
+            toggleMic={toggleMic}
+            toggleVideo={toggleVideo}
+          />
+        )}
       </div>
 
       {/* ── On-Screen Directional D-pad Movement HUD (Bottom-Right) ── */}
       <div style={{
-        position: 'fixed',
-        bottom: '24px',
-        right: '24px',
+        position: 'absolute',
+        bottom: '20px',
+        right: '20px',
         zIndex: 100,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         gap: '4px',
-        background: 'rgba(8, 12, 22, 0.72)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderRadius: '16px',
-        padding: '12px 14px 10px',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.6), 0 0 1px rgba(255,255,255,0.1)'
+        background: 'rgba(14, 19, 29, 0.85)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '10px 10px 8px',
+        boxShadow: 'var(--shadow)'
       }}>
         {/* Up row */}
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <button
             {...makeBtn('up', '↑')}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(99,102,241,0.25)'; e.currentTarget.style.borderColor = '#818cf8'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = btnBase.background; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#94a3b8'; }}
           />
         </div>
         {/* Middle row: left, down, right */}
         <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
           <button
             {...makeBtn('left', '←')}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(99,102,241,0.25)'; e.currentTarget.style.borderColor = '#818cf8'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = btnBase.background; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#94a3b8'; }}
           />
           <button
             {...makeBtn('down', '↓')}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(99,102,241,0.25)'; e.currentTarget.style.borderColor = '#818cf8'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = btnBase.background; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#94a3b8'; }}
           />
           <button
             {...makeBtn('right', '→')}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(99,102,241,0.25)'; e.currentTarget.style.borderColor = '#818cf8'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = btnBase.background; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#94a3b8'; }}
           />
         </div>
-        <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.35)', fontSize: '9px', marginTop: '4px', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 600 }}>
-          WASD OR CLICK
+        <p style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '11px', marginTop: '4px', fontWeight: 500 }}>
+          WASD or click to move
         </p>
       </div>
 
       <style>{`
-        @keyframes pulseDais {
-          0% { transform: scale(1); opacity: 0.6; }
-          100% { transform: scale(1.06); opacity: 1; }
+        .campus-dpad-btn {
+          width: 38px; height: 38px;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 15px;
+          background: var(--surface-2);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          color: var(--text-muted);
+          user-select: none;
+          touch-action: none;
+          transition: background 0.12s, color 0.12s, border-color 0.12s;
         }
-        @keyframes pulseDaisCyan {
-          0% { transform: scale(1); opacity: 0.6; }
-          100% { transform: scale(1.06); opacity: 1; }
+        .campus-dpad-btn:hover { background: var(--surface-3); color: var(--text-strong); border-color: var(--border-hover); }
+        .campus-dpad-btn:active { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-border); }
+        .campus-kbd {
+          display: inline-flex; align-items: center; justify-content: center;
+          min-width: 20px; height: 20px; padding: 0 5px; margin: 0 3px;
+          border-radius: 5px; border: 1px solid var(--border-strong);
+          background: var(--surface-3); color: var(--text-strong);
+          font-family: var(--font-mono); font-size: 11px; font-weight: 600;
         }
         @keyframes centralPortalPulse {
           0% { transform: translate(-50%, -50%) scale(1); opacity: 0.85; box-shadow: 0 0 20px rgba(56, 189, 248, 0.8); }

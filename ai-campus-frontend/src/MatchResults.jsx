@@ -1,119 +1,83 @@
-function MatchResults({ leaderboard, myUserId, onExit }) {
-  const medal = (rank) => {
-    if (rank === 1) return '🥇';
-    if (rank === 2) return '🥈';
-    if (rank === 3) return '🥉';
-    return null;
+import { IconArrowLeft, IconTrophy } from './icons';
+import { SplitWords } from './fx';
+
+// Deterministic confetti burst (no randomness so re-renders stay stable).
+const CONFETTI = Array.from({ length: 28 }, (_, i) => {
+  const angle = (i / 28) * Math.PI * 2;
+  const dist = 110 + (i % 5) * 28;
+  return {
+    x: `${Math.round(Math.cos(angle) * dist)}px`,
+    y: `${Math.round(Math.sin(angle) * dist * 0.7 + 90)}px`,
+    r: `${(i % 2 ? 1 : -1) * (180 + i * 23)}deg`,
+    c: ['#f59e0b', '#fcd34d', '#34d399', '#5eead4', '#fb923c', '#f5f5f4'][i % 6],
   };
+});
+
+const RANK_COLORS = { 1: '#fbbf24', 2: '#d6d3d1', 3: '#d97706' };
+
+function MatchResults({ leaderboard = [], myUserId, onExit }) {
+  const myIndex = leaderboard.findIndex((p) => p.userId === myUserId);
 
   return (
-    <div style={{
-      padding: '48px 24px',
-      maxWidth: '540px',
-      margin: '0 auto',
-      fontFamily: "'Outfit', 'Inter', sans-serif",
-      textAlign: 'center'
-    }}>
-      {/* Trophy & Title */}
-      <div style={{
-        fontSize: '48px',
-        marginBottom: '10px',
-        filter: 'drop-shadow(0 0 20px rgba(253, 224, 71, 0.5))'
-      }}>🏆</div>
+    <div className="page page-narrow" style={{ maxWidth: 520, paddingTop: 56, position: 'relative' }}>
+      <div style={{ textAlign: 'center', marginBottom: 28, position: 'relative' }}>
+        {myIndex >= 0 && myIndex < 3 && (
+          <div className="confetti" aria-hidden="true">
+            {CONFETTI.map((p, i) => (
+              <i key={i} style={{ '--i': i, '--x': p.x, '--y': p.y, '--r': p.r, background: p.c }} />
+            ))}
+          </div>
+        )}
+        <span className="icon-tile trophy" style={{ width: 48, height: 48, margin: '0 auto 14px', color: 'var(--yellow-text)', background: 'var(--yellow-soft)', borderColor: 'transparent' }}>
+          <IconTrophy size={22} />
+        </span>
+        <h1 className="page-title"><SplitWords text={myIndex === 0 ? 'You won the match' : 'Match over'} delay={250} /></h1>
+        <p className="page-subtitle">
+          {myIndex >= 0 ? `You finished #${myIndex + 1} of ${leaderboard.length}.` : 'Final standings'}
+        </p>
+      </div>
 
-      <h2 style={{
-        color: '#ffffff',
-        fontSize: '28px',
-        fontWeight: 900,
-        letterSpacing: '-0.5px',
-        marginBottom: '4px'
-      }}>
-        Combat Match Complete
-      </h2>
-      <p style={{ color: '#94a3b8', fontSize: '13.5px', marginBottom: '28px' }}>
-        Timer zero reached — final battlefield frag standings
-      </p>
-
-      {/* Leaderboard list */}
-      <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        {leaderboard.length === 0 && (
+          <div className="muted" style={{ padding: 20, textAlign: 'center' }}>No results recorded.</div>
+        )}
         {leaderboard.map((p, index) => {
           const rank = index + 1;
           const isMe = p.userId === myUserId;
-
           return (
             <div
               key={p.userId}
+              className={`row result-row ${isMe ? 'is-me' : ''}`}
               style={{
-                display: 'flex',
                 justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '14px 18px',
-                borderRadius: '14px',
-                background: isMe
-                  ? 'linear-gradient(135deg, rgba(147, 51, 234, 0.25) 0%, rgba(56, 189, 248, 0.15) 100%)'
-                  : 'rgba(15, 23, 42, 0.6)',
-                border: isMe
-                  ? '1.5px solid rgba(192, 132, 252, 0.6)'
-                  : '1px solid rgba(255, 255, 255, 0.08)',
-                boxShadow: isMe
-                  ? '0 8px 24px rgba(147, 51, 234, 0.35), 0 0 16px rgba(56, 189, 248, 0.2)'
-                  : '0 4px 12px rgba(0,0,0,0.3)',
-                backdropFilter: 'blur(12px)',
-                transition: 'all 0.15s ease'
+                padding: '12px 16px',
+                '--i': index,
+                borderTop: index ? '1px solid var(--border)' : 'none',
+                background: isMe ? 'var(--accent-soft)' : 'transparent',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <span style={{ fontSize: '18px', width: '28px', textAlign: 'center', color: '#94a3b8', fontWeight: 800 }}>
-                  {medal(rank) || `#${rank}`}
+              <div className="row" style={{ gap: 12, minWidth: 0 }}>
+                <span className="mono" style={{ width: 24, textAlign: 'center', fontWeight: 600, color: RANK_COLORS[rank] || 'var(--text-dim)' }}>
+                  {rank}
                 </span>
-                <span style={{ fontWeight: isMe ? 800 : 600, color: '#f8fafc', fontSize: '15px' }}>
+                <span className="truncate" style={{ fontWeight: isMe ? 600 : 500, color: 'var(--text-strong)' }}>
                   {p.displayName}
-                  {isMe && (
-                    <span style={{
-                      marginLeft: '8px', fontSize: '10px', fontWeight: 800,
-                      color: '#38bdf8', background: 'rgba(56, 189, 248, 0.15)',
-                      border: '1px solid rgba(56, 189, 248, 0.3)', padding: '2px 7px',
-                      borderRadius: '6px', textTransform: 'uppercase'
-                    }}>YOU</span>
-                  )}
                 </span>
+                {isMe && <span className="badge badge-accent">You</span>}
               </div>
-              <span style={{
-                color: isMe ? '#38bdf8' : '#c084fc',
-                fontWeight: 800,
-                fontSize: '14px',
-                background: 'rgba(255,255,255,0.04)',
-                border: '1px solid rgba(255,255,255,0.06)',
-                padding: '4px 12px',
-                borderRadius: '8px'
-              }}>
-                {p.kills} kill{p.kills === 1 ? '' : 's'}
+              <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', fontSize: 13.5 }}>
+                <strong style={{ color: 'var(--text-strong)', fontWeight: 600 }}>{p.kills}</strong> {p.kills === 1 ? 'kill' : 'kills'}
               </span>
             </div>
           );
         })}
       </div>
 
-      <button
-        onClick={onExit}
-        style={{
-          marginTop: '32px',
-          padding: '12px 28px',
-          borderRadius: '12px',
-          cursor: 'pointer',
-          background: 'linear-gradient(135deg, #7c3aed 0%, #2563eb 100%)',
-          border: 'none',
-          color: '#ffffff',
-          fontWeight: 800,
-          fontSize: '14px',
-          boxShadow: '0 6px 20px rgba(124, 58, 237, 0.45)',
-          transition: 'all 0.15s ease'
-        }}
-        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.03)'; }}
-        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; }}
-      >
-        ← Back to Gaming Lab Hub
-      </button>
+      <div style={{ textAlign: 'center', marginTop: 24 }}>
+        <button type="button" className="btn btn-primary" onClick={onExit}>
+          <IconArrowLeft size={15} /> Back to Gaming Lab
+        </button>
+      </div>
     </div>
   );
 }

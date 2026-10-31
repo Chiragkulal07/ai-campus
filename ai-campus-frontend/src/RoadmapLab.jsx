@@ -1,8 +1,9 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { ReactFlow, Background, Panel, useNodesState, useReactFlow, Handle, Position } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import './roadmap.css';
 import { API_URL } from './config';
+import { readJson } from './utils';
 
 // Assigns each node an (x, y) position based on its depth in the
 // dependency graph (longest path from any root), so prerequisites
@@ -22,7 +23,7 @@ function computeLayout(nodes, edges) {
     columns[lvl].push(n.id);
   });
 
-  const xGap = 350, yGap = 160;
+  const xGap = 280, yGap = 150;
   const positions = {};
   Object.keys(columns).forEach((lvl) => {
     const ids = columns[lvl];
@@ -110,11 +111,14 @@ function getCleanDomain(url) {
 
 // Custom larger, legible Roadmap Node with visual hierarchy
 function RoadmapNode({ data }) {
-  const { label, description, stepNumber, status = 'locked', isSelected } = data;
+  const { label, description, stepNumber, status = 'locked', isSelected, level = 0 } = data;
   const isCurrent = status === 'current' || isSelected;
 
   return (
-    <div className={`roadmap-node-card status-${status} ${isCurrent ? 'is-selected' : ''}`}>
+    <div
+      className={`roadmap-node-card status-${status} ${isCurrent ? 'is-selected' : ''}`}
+      style={{ '--enter-delay': `${120 + level * 110}ms` }}
+    >
       <Handle
         type="target"
         position={Position.Left}
@@ -123,7 +127,7 @@ function RoadmapNode({ data }) {
 
       <div className="node-meta-row">
         <span className="node-step-label">
-          {stepNumber != null ? `STEP ${String(stepNumber).padStart(2, '0')}` : 'STEP'}
+          {stepNumber != null ? String(stepNumber).padStart(2, '0') : '—'}
         </span>
         <div className="node-status-badge">
           {status === 'completed' && (
@@ -150,7 +154,7 @@ function RoadmapNode({ data }) {
             </>
           )}
           {status === 'available' && (
-            <span>○ Ready</span>
+            <span>Ready</span>
           )}
         </div>
       </div>
@@ -185,7 +189,7 @@ function RoadmapCanvasControls({ selectedNodeId }) {
   const zoomAroundSelected = (direction) => {
     const node = selectedNodeId ? getNode(selectedNodeId) : null;
     if (!node) {
-      fitView({ duration: 250, padding: 0.12 });
+      fitView({ duration: 400, padding: 0.1 });
       return;
     }
 
@@ -195,7 +199,7 @@ function RoadmapCanvasControls({ selectedNodeId }) {
     const centerY = (node.positionAbsolute?.y ?? node.position.y) + height / 2;
     const zoom = Math.min(2, Math.max(0.25, getZoom() + direction * 0.2));
 
-    setCenter(centerX, centerY, { zoom, duration: 250 });
+    setCenter(centerX, centerY, { zoom, duration: 350 });
   };
 
   return (
@@ -206,7 +210,7 @@ function RoadmapCanvasControls({ selectedNodeId }) {
       <button type="button" aria-label="Zoom out from selected milestone" title="Zoom out from selected milestone" onClick={() => zoomAroundSelected(-1)}>
         −
       </button>
-      <button type="button" aria-label="Fit full roadmap" title="Fit full roadmap" onClick={() => fitView({ duration: 300, padding: 0.12 })}>
+      <button type="button" aria-label="Fit full roadmap" title="Fit full roadmap" onClick={() => fitView({ duration: 400, padding: 0.1 })}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M8 3H5a2 2 0 0 0-2 2v3" />
           <path d="M16 3h3a2 2 0 0 1 2 2v3" />
@@ -221,72 +225,50 @@ function RoadmapCanvasControls({ selectedNodeId }) {
 // Cycles through friendly status messages while the LLM/resource fetch is
 // running, so the loading screen feels alive instead of a static spinner.
 const LOADING_MESSAGES_QUESTIONS = [
-  'Reading your topic…',
-  'Thinking of good follow-up questions…',
+  'Preparing questions…',
   'Almost ready…'
 ];
 const LOADING_MESSAGES_ROADMAP = [
-  'Designing your learning path…',
-  'Ordering topics from beginner to advanced…',
-  'Lining up videos and articles…',
-  'Putting the final touches on your roadmap…'
+  'Building your roadmap…',
+  'Ordering steps from beginner to advanced…',
+  'Finding videos and articles…'
 ];
 
 function InteractiveLoader({ messages }) {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
-    setIndex(0);
     const interval = setInterval(() => {
       setIndex((i) => (i + 1) % messages.length);
-    }, 2200);
+    }, 2400);
     return () => clearInterval(interval);
   }, [messages]);
 
+  const points = [[20, 70], [80, 30], [140, 62], [200, 24], [260, 50]];
+
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      minHeight: '340px', gap: '22px'
-    }}>
-      <div style={{ position: 'relative', width: '56px', height: '56px' }}>
-        <div style={{
-          position: 'absolute', inset: 0, borderRadius: '50%',
-          border: '3px solid rgba(59,130,246,0.15)', borderTopColor: '#3b82f6',
-          boxShadow: '0 0 18px rgba(59,130,246,0.3)',
-          animation: 'roadmap-spin 0.9s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite'
-        }} />
-        <div style={{
-          position: 'absolute', inset: '8px', borderRadius: '50%',
-          border: '2px solid rgba(96,165,250,0.1)', borderBottomColor: '#60a5fa',
-          animation: 'roadmap-spin 1.4s linear infinite reverse'
-        }} />
-      </div>
-      <p style={{
-        color: '#93c5fd', fontSize: '15px', fontWeight: 600, letterSpacing: '-0.01em',
-        transition: 'opacity 0.3s ease', minHeight: '22px', textAlign: 'center', margin: 0
-      }}>
-        {messages[index]}
-      </p>
-      <div style={{ display: 'flex', gap: '7px' }}>
+    <div className="rm-loader" role="status" aria-live="polite">
+      <svg className="rm-loader-svg" viewBox="0 0 280 96" aria-hidden="true">
+        <path className="rm-loader-track" d="M20 70 C 50 70, 50 30, 80 30 S 110 62, 140 62 S 170 24, 200 24 S 230 50, 260 50" />
+        <path className="rm-loader-path" d="M20 70 C 50 70, 50 30, 80 30 S 110 62, 140 62 S 170 24, 200 24 S 230 50, 260 50" pathLength="100" />
+        {points.map(([cx, cy], i) => (
+          <g key={i} className="rm-loader-node" style={{ '--i': i }}>
+            <circle className="rm-loader-halo" cx={cx} cy={cy} r="9" />
+            <circle className="rm-loader-dot" cx={cx} cy={cy} r="4.5" />
+          </g>
+        ))}
+      </svg>
+      <p key={index} className="rm-loader-text">{messages[index]}</p>
+      <div className="rm-loader-steps">
         {messages.map((_, i) => (
-          <div key={i} style={{
-            width: '7px', height: '7px', borderRadius: '50%',
-            background: i === index ? '#60a5fa' : 'rgba(148,163,184,0.22)',
-            boxShadow: i === index ? '0 0 8px #3b82f6' : 'none',
-            transition: 'all 0.3s ease'
-          }} />
+          <span key={i} className={i === index ? 'is-active' : ''} />
         ))}
       </div>
-      <style>{`
-        @keyframes roadmap-spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   );
 }
 
-function RoadmapLab({ token, onExit }) {
+function RoadmapLab({ token, onExit, backLabel = 'Back' }) {
   const [phase, setPhase] = useState('topic'); // topic | questions | loading | result | error
   const [loadingKind, setLoadingKind] = useState('questions'); // 'questions' | 'roadmap'
   const [topic, setTopic] = useState('');
@@ -298,6 +280,47 @@ function RoadmapLab({ token, onExit }) {
   const [resources, setResources] = useState([]);
   const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const [resourcesDone, setResourcesDone] = useState(false);
+
+  const resetSession = () => {
+    setPhase('topic');
+    setRoadmap(null);
+    setSelectedNodeId(null);
+    setSessionId(null);
+    setQuestions([]);
+    setAnswers([]);
+    setNodes([]);
+    setResources([]);
+    setResourcesDone(false);
+    setErrorMsg('');
+  };
+
+  const requestIdRef = useRef(0);
+  const abortRef = useRef(null);
+
+  const beginRequest = () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    requestIdRef.current += 1;
+    return { id: requestIdRef.current, signal: controller.signal };
+  };
+
+  const cancelLoading = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    requestIdRef.current += 1; // invalidate any in-flight response
+    setPhase(loadingKind === 'roadmap' ? 'questions' : 'topic');
+  };
+
+  // Abort any in-flight request if the user leaves the lab.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const friendlyError = (err) => {
+    const msg = err?.message || 'Something went wrong.';
+    if (msg === 'Failed to fetch') return 'Unable to reach the server. Check your connection and try again.';
+    return msg.charAt(0).toUpperCase() + msg.slice(1);
+  };
 
   const handleStart = async (e) => {
     e.preventDefault();
@@ -305,20 +328,24 @@ function RoadmapLab({ token, onExit }) {
     setLoadingKind('questions');
     setPhase('loading');
     setErrorMsg('');
+    const { id, signal } = beginRequest();
     try {
       const res = await fetch(`${API_URL}/roadmap/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ topic: topic.trim() })
+        body: JSON.stringify({ topic: topic.trim() }),
+        signal,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'failed to start');
+      const data = await readJson(res);
+      if (id !== requestIdRef.current) return;
+      if (!res.ok || !Array.isArray(data.questions)) throw new Error(data.error || 'Could not start a roadmap for this topic.');
       setSessionId(data.sessionId);
       setQuestions(data.questions);
       setAnswers(new Array(data.questions.length).fill(''));
       setPhase('questions');
     } catch (err) {
-      setErrorMsg(err.message);
+      if (id !== requestIdRef.current || err.name === 'AbortError') return;
+      setErrorMsg(friendlyError(err));
       setPhase('error');
     }
   };
@@ -328,14 +355,17 @@ function RoadmapLab({ token, onExit }) {
     setLoadingKind('roadmap');
     setPhase('loading');
     setErrorMsg('');
+    const { id, signal } = beginRequest();
     try {
       const res = await fetch(`${API_URL}/roadmap/${sessionId}/answer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ answers })
+        body: JSON.stringify({ answers }),
+        signal,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'failed to generate roadmap');
+      const data = await readJson(res);
+      if (id !== requestIdRef.current) return;
+      if (!res.ok || !data.roadmap?.nodes) throw new Error(data.error || 'Could not generate the roadmap. Please try again.');
       setRoadmap(data.roadmap);
       setSelectedNodeId(data.roadmap.nodes[0]?.id || null);
       const positions = computeLayout(data.roadmap.nodes, data.roadmap.edges);
@@ -345,9 +375,11 @@ function RoadmapLab({ token, onExit }) {
         data: { label: node.label }
       })));
       setResources(data.resources || []);
+      setResourcesDone(false);
       setPhase('result');
     } catch (err) {
-      setErrorMsg(err.message);
+      if (id !== requestIdRef.current || err.name === 'AbortError') return;
+      setErrorMsg(friendlyError(err));
       setPhase('error');
     }
   };
@@ -363,13 +395,14 @@ function RoadmapLab({ token, onExit }) {
     const maxAttempts = 15; // ~45s total at 3s intervals, then give up
 
     const poll = async () => {
-      if (cancelled || attempts >= maxAttempts) return;
+      if (cancelled) return;
+      if (attempts >= maxAttempts) { setResourcesDone(true); return; }
       attempts += 1;
       try {
         const res = await fetch(`${API_URL}/roadmap/${sessionId}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        const data = await res.json();
+        const data = await readJson(res);
         if (!cancelled && data.resources && data.resources.length > 0) {
           setResources(data.resources);
           return; // stop polling, we got them
@@ -404,6 +437,7 @@ function RoadmapLab({ token, onExit }) {
           stepNumber: idx + 1,
           status,
           isSelected,
+          level: nodeStatusInfo.level[node.id] ?? 0,
         },
       };
     });
@@ -414,40 +448,19 @@ function RoadmapLab({ token, onExit }) {
     return roadmap.edges.map((e, i) => {
       const sourceStatus = nodeStatusInfo.statuses[e.source];
       const targetStatus = nodeStatusInfo.statuses[e.target];
-      const isCompleted = sourceStatus === 'completed' && (targetStatus === 'completed' || targetStatus === 'current');
-      const isCurrentOut = sourceStatus === 'current';
-      const isLocked = sourceStatus === 'locked';
+      let kind = 'next';
+      if (sourceStatus === 'completed' && (targetStatus === 'completed' || targetStatus === 'current')) kind = 'done';
+      else if (sourceStatus === 'current') kind = 'active';
+      else if (sourceStatus === 'locked') kind = 'locked';
 
-      let stroke = '#3b82f6';
-      let strokeWidth = 2;
-      let strokeDasharray = undefined;
-      let animated = true;
-
-      if (isCompleted) {
-        stroke = '#10b981';
-        strokeWidth = 2.5;
-      } else if (isCurrentOut) {
-        stroke = '#60a5fa';
-        strokeWidth = 2.5;
-      } else if (isLocked) {
-        stroke = 'rgba(148, 163, 184, 0.28)';
-        strokeWidth = 1.5;
-        strokeDasharray = '5 5';
-        animated = false;
-      }
-
+      const sourceLevel = nodeStatusInfo.level[e.source] ?? 0;
       return {
         id: `e-${i}`,
         source: e.source,
         target: e.target,
-        animated,
-        style: {
-          stroke,
-          strokeWidth,
-          strokeDasharray,
-          filter: animated ? `drop-shadow(0 0 5px ${stroke}88)` : 'none',
-          transition: 'stroke 0.3s ease, filter 0.3s ease',
-        }
+        className: `rm-edge rm-edge-${kind}`,
+        // Two delays: edge draw-in, then (active edges only) the dash flow after it finishes.
+        style: { animationDelay: `${260 + sourceLevel * 110}ms, ${1060 + sourceLevel * 110}ms` },
       };
     });
   }, [roadmap, nodeStatusInfo]);
@@ -458,73 +471,90 @@ function RoadmapLab({ token, onExit }) {
   const selectedResources = resources.find((r) => r.nodeId === selectedNodeId);
   const selectedStepIndex = roadmap?.nodes.findIndex((n) => n.id === selectedNodeId);
   const selectedNodeStatus = selectedNodeId ? (nodeStatusInfo.statuses[selectedNodeId] || 'current') : null;
+  const totalSteps = roadmap?.nodes?.length || 0;
+  const doneSteps = Object.values(nodeStatusInfo.statuses).filter((st) => st === 'completed').length;
+  const progressPct = totalSteps ? Math.round((doneSteps / totalSteps) * 100) : 0;
 
   return (
     <div className={`roadmap-container ${phase === 'result' ? 'phase-result' : 'phase-form'}`}>
       {/* Topbar Header */}
       <div className="roadmap-topbar">
         <div className="roadmap-topbar-left">
-          <div className="roadmap-eyebrow">
-            <span className="roadmap-eyebrow-dot" />
-            LEARNING STUDIO
-          </div>
-          <h2 className="roadmap-header-title">🗺️ Roadmap Lab</h2>
+          <h2 className="roadmap-header-title">Roadmap Lab</h2>
           <p className="roadmap-header-subtitle">
             {roadmap ? (
               <>
-                Personalized curriculum for <span className="roadmap-topic-highlight">"{topic}"</span>
+                <span className="roadmap-topic-highlight">{topic}</span> · {roadmap.nodes?.length || 0} steps
               </>
             ) : (
-              'Turn any goal into an actionable, step-by-step masterclass.'
+              'Generate a step-by-step learning path for any topic.'
             )}
           </p>
         </div>
-        <button onClick={onExit} className="roadmap-exit-btn">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-          Exit Lab
-        </button>
+        <div className="roadmap-topbar-actions">
+          {phase === 'result' && (
+            <button
+              onClick={resetSession}
+              className="roadmap-secondary-btn"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="1 4 1 10 7 10"></polyline>
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+              </svg>
+              New Topic
+            </button>
+          )}
+          <button type="button" onClick={onExit} className="roadmap-exit-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+            {backLabel}
+          </button>
+        </div>
       </div>
 
       {/* Phase 1: Topic Input */}
       {phase === 'topic' && (
         <div className="roadmap-form-scroll-container">
           <form onSubmit={handleStart} className="roadmap-form-card">
-            <div className="roadmap-form-header-badge">
-              <span>✨</span>
-              <span>AI Curriculum Architect</span>
-            </div>
+            <div className="roadmap-card-tag">Step 1 of 2</div>
             <h3 className="roadmap-form-title">What do you want to learn?</h3>
             <p className="roadmap-form-desc">
-              Enter a subject, programming language, creative craft, or career milestone to build your pathway.
+              Pick a suggestion or type any skill or subject.
             </p>
             <div className="roadmap-chips-row">
-              {['Machine Learning', 'Full-Stack Web Dev', 'System Design', 'UI/UX Design', 'Data Engineering'].map((suggestion) => (
+              {['Machine Learning', 'Full-Stack Web Dev', 'System Design', 'UI/UX Design', 'Data Engineering', 'DevOps & Cloud'].map((suggestion) => (
                 <button
                   key={suggestion}
                   type="button"
-                  className="roadmap-chip-btn"
+                  className={`roadmap-chip-btn ${topic === suggestion ? 'is-active' : ''}`}
                   onClick={() => setTopic(suggestion)}
                 >
                   {suggestion}
                 </button>
               ))}
             </div>
-            <input
-              className="roadmap-input-field"
-              placeholder="e.g. Machine Learning, Web Development, Guitar"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-            />
-            <button type="submit" className="roadmap-primary-btn">
-              <span>Generate Questions</span>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-                <polyline points="12 5 19 12 12 19"></polyline>
-              </svg>
-            </button>
+            <div className="roadmap-input-wrapper">
+              <input
+                className="roadmap-input-field"
+                placeholder="e.g. React, Python, Docker"
+                aria-label="Topic"
+                maxLength={80}
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="roadmap-form-actions">
+              <button type="submit" disabled={!topic.trim()} className="roadmap-primary-btn">
+                <span>Continue</span>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                  <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+              </button>
+            </div>
           </form>
         </div>
       )}
@@ -533,24 +563,21 @@ function RoadmapLab({ token, onExit }) {
       {phase === 'questions' && (
         <div className="roadmap-form-scroll-container roadmap-questions-scroll">
           <form onSubmit={handleSubmitAnswers} className="roadmap-form-card roadmap-questions-form">
-            <div className="roadmap-form-header-badge">
-              <span>🎯</span>
-              <span>Tailor Your Experience</span>
-            </div>
-            <h3 className="roadmap-form-title">Fine-tune your roadmap</h3>
+            <div className="roadmap-card-tag">Step 2 of 2</div>
+            <h3 className="roadmap-form-title">A few quick questions</h3>
             <p className="roadmap-form-desc">
-              Answer a few quick questions so we can calibrate prerequisites and pace for "{topic}".
+              Your answers tailor the roadmap for <span className="roadmap-topic-highlight">{topic}</span>. Leave any blank to skip.
             </p>
             <div className="roadmap-questions-list">
               {questions.map((q, i) => (
                 <div key={i} className="roadmap-question-card">
                   <label className="roadmap-question-label">
-                    <span className="roadmap-question-idx">{i + 1}</span>
-                    <span>{q}</span>
+                    <span className="roadmap-question-idx">{String(i + 1).padStart(2, '0')}</span>
+                    <span className="roadmap-question-text">{q}</span>
                   </label>
                   <input
                     className="roadmap-input-field roadmap-question-input"
-                    placeholder="Type your answer or experience level…"
+                    placeholder="Your answer"
                     value={answers[i]}
                     onChange={(e) => {
                       const next = [...answers];
@@ -561,31 +588,52 @@ function RoadmapLab({ token, onExit }) {
                 </div>
               ))}
             </div>
-            <button type="submit" className="roadmap-primary-btn">
-              <span>Build My Roadmap</span>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"></polygon>
-              </svg>
-            </button>
+            <div className="roadmap-questions-actions">
+              <button
+                type="button"
+                onClick={() => setPhase('topic')}
+                className="roadmap-secondary-btn"
+              >
+                Back
+              </button>
+              <button type="submit" className="roadmap-primary-btn">
+                <span>Build roadmap</span>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                  <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+              </button>
+            </div>
           </form>
         </div>
       )}
 
       {/* Phase 3: Loading */}
       {phase === 'loading' && (
-        <InteractiveLoader
-          messages={loadingKind === 'questions' ? LOADING_MESSAGES_QUESTIONS : LOADING_MESSAGES_ROADMAP}
-        />
+        <div className="rm-loader-wrap">
+          <InteractiveLoader
+            key={loadingKind}
+            messages={loadingKind === 'questions' ? LOADING_MESSAGES_QUESTIONS : LOADING_MESSAGES_ROADMAP}
+          />
+          <button type="button" onClick={cancelLoading} className="roadmap-secondary-btn rm-loader-cancel">
+            Cancel
+          </button>
+        </div>
       )}
 
       {/* Phase 4: Error */}
       {phase === 'error' && (
         <div className="roadmap-form-scroll-container">
           <div className="roadmap-error-card">
-            <p className="roadmap-error-text">⚠️ {errorMsg}</p>
-            <button onClick={() => setPhase('topic')} className="roadmap-primary-btn">
-              Try Again
-            </button>
+            <p className="roadmap-error-text">{errorMsg}</p>
+            <div className="roadmap-questions-actions" style={{ borderTop: 'none', paddingTop: 0, marginTop: 0 }}>
+              <button type="button" onClick={onExit} className="roadmap-secondary-btn">
+                {backLabel}
+              </button>
+              <button type="button" onClick={() => setPhase(loadingKind === 'roadmap' ? 'questions' : 'topic')} className="roadmap-primary-btn">
+                Try again
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -607,8 +655,8 @@ function RoadmapLab({ token, onExit }) {
                   </svg>
                 </div>
                 <div>
-                  <div className="canvas-header-title">Curriculum Path</div>
-                  <div className="canvas-header-sub">Dependencies flow left to right • Select any milestone to inspect</div>
+                  <div className="canvas-header-title">Learning path</div>
+                  <div className="canvas-header-sub">Prerequisites flow left to right. Select a step to see its resources.</div>
                 </div>
               </div>
 
@@ -626,7 +674,7 @@ function RoadmapLab({ token, onExit }) {
                   <span>Upcoming</span>
                 </div>
                 <div className="canvas-step-badge">
-                  {flowNodes.length} Milestones
+                  {flowNodes.length} steps
                 </div>
               </div>
             </div>
@@ -642,10 +690,10 @@ function RoadmapLab({ token, onExit }) {
                 fitView
                 minZoom={0.25}
                 maxZoom={2}
-                fitViewOptions={{ padding: 0.12, minZoom: 0.45, maxZoom: 2 }}
+                fitViewOptions={{ padding: 0.1, minZoom: 0.6, maxZoom: 1.15 }}
                 colorMode="dark"
               >
-                <Background color="rgba(59, 130, 246, 0.1)" gap={24} size={1.5} />
+                <Background color="rgba(231, 229, 228, 0.07)" gap={22} size={1.2} />
                 <RoadmapCanvasControls selectedNodeId={selectedNodeId} />
               </ReactFlow>
             </div>
@@ -661,12 +709,8 @@ function RoadmapLab({ token, onExit }) {
                     <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon>
                   </svg>
                 </div>
-                <h3>Select a Milestone</h3>
-                <p>Click any step in the roadmap graph to explore its learning goals, video tutorials, and technical guides.</p>
-                <div className="empty-hint-pill">
-                  <span>💡</span>
-                  <span>Interactive Pathway Navigator</span>
-                </div>
+                <h3>Select a step</h3>
+                <p>Click a step in the graph to see its description and learning resources.</p>
               </div>
             )}
 
@@ -676,13 +720,13 @@ function RoadmapLab({ token, onExit }) {
                 <div className="node-detail-header">
                   <div className="node-detail-tag-row">
                     <span className={`status-pill pill-${selectedNodeStatus}`}>
-                      {selectedNodeStatus === 'completed' && '✓ COMPLETED'}
-                      {selectedNodeStatus === 'current' && '● IN PROGRESS'}
-                      {selectedNodeStatus === 'locked' && '🔒 UPCOMING'}
-                      {selectedNodeStatus === 'available' && '○ READY'}
+                      {selectedNodeStatus === 'completed' && 'Done'}
+                      {selectedNodeStatus === 'current' && 'Current'}
+                      {selectedNodeStatus === 'locked' && 'Upcoming'}
+                      {selectedNodeStatus === 'available' && 'Ready'}
                     </span>
                     <span className="step-count-pill">
-                      STEP {String((selectedStepIndex != null && selectedStepIndex >= 0 ? selectedStepIndex + 1 : 1)).padStart(2, '0')} OF {roadmap.nodes.length}
+                      Step {(selectedStepIndex != null && selectedStepIndex >= 0 ? selectedStepIndex + 1 : 1)} of {roadmap.nodes.length}
                     </span>
                   </div>
                   <h3 className="node-detail-title">{selectedNode.label}</h3>
@@ -693,19 +737,39 @@ function RoadmapLab({ token, onExit }) {
                   )}
                 </div>
 
+                <div className="rm-progress">
+                  <div className="rm-progress-row">
+                    <span>Path progress</span>
+                    <span className="rm-progress-value">{doneSteps} of {totalSteps} done</span>
+                  </div>
+                  <div className="rm-progress-track">
+                    <div className="rm-progress-fill" style={{ width: `${progressPct}%` }} />
+                  </div>
+                </div>
+
                 <div className="resource-divider" />
 
                 {/* Curated Resources Section */}
                 <div className="resources-section">
                   {!selectedResources?.youtube?.length && !selectedResources?.articles?.length ? (
-                    <div className="resources-loading-state">
-                      <div className="resources-loading-badge">
-                        <span className="resource-spin-dot" />
-                        <span>Curating recommended tutorials & articles…</span>
+                    // Resources arrive as one batch: once any exist (or polling gave up),
+                    // an empty step means there is nothing for it, not that it's still loading.
+                    resourcesDone || resources.length > 0 ? (
+                      <div className="resources-loading-state">
+                        <p className="canvas-header-sub" style={{ margin: 0 }}>
+                          No resources are available for this step yet.
+                        </p>
                       </div>
-                      <div className="skeleton-card shimmer" />
-                      <div className="skeleton-card shimmer" />
-                    </div>
+                    ) : (
+                      <div className="resources-loading-state">
+                        <div className="resources-loading-badge">
+                          <span className="resource-spin-dot" />
+                          <span>Finding videos and articles…</span>
+                        </div>
+                        <div className="skeleton-card shimmer" />
+                        <div className="skeleton-card shimmer" />
+                      </div>
+                    )
                   ) : (
                     <>
                       {/* Video Tutorials */}
@@ -716,10 +780,10 @@ function RoadmapLab({ token, onExit }) {
                               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <polygon points="5 3 19 12 5 21 5 3" fill="#ef4444" />
                               </svg>
-                              <h4>Video Lessons</h4>
+                              <h4>Videos</h4>
                             </div>
                             <span className="group-count-badge">
-                              {selectedResources.youtube.length} {selectedResources.youtube.length === 1 ? 'lesson' : 'lessons'}
+                              {selectedResources.youtube.length}
                             </span>
                           </div>
                           <div className="resource-cards-list">
@@ -738,7 +802,7 @@ function RoadmapLab({ token, onExit }) {
                                 </div>
                                 <div className="resource-card-content">
                                   <div className="resource-card-meta">
-                                    <span className="resource-tag video-tag">YOUTUBE</span>
+                                    <span className="resource-tag video-tag">Video</span>
                                     <span className="resource-domain">youtube.com</span>
                                   </div>
                                   <div className="resource-card-title">{v.title}</div>
@@ -760,16 +824,16 @@ function RoadmapLab({ token, onExit }) {
                         <div className="resource-group">
                           <div className="resource-group-header">
                             <div className="group-title-row">
-                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fcd34d" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                                 <polyline points="14 2 14 8 20 8"></polyline>
                                 <line x1="16" y1="13" x2="8" y2="13"></line>
                                 <line x1="16" y1="17" x2="8" y2="17"></line>
                               </svg>
-                              <h4>Articles &amp; Guides</h4>
+                              <h4>Articles</h4>
                             </div>
                             <span className="group-count-badge">
-                              {selectedResources.articles.length} {selectedResources.articles.length === 1 ? 'article' : 'articles'}
+                              {selectedResources.articles.length}
                             </span>
                           </div>
                           <div className="resource-cards-list">
@@ -789,7 +853,7 @@ function RoadmapLab({ token, onExit }) {
                                 </div>
                                 <div className="resource-card-content">
                                   <div className="resource-card-meta">
-                                    <span className="resource-tag article-tag">GUIDE</span>
+                                    <span className="resource-tag article-tag">Article</span>
                                     <span className="resource-domain">{getCleanDomain(a.url)}</span>
                                   </div>
                                   <div className="resource-card-title">{a.title}</div>

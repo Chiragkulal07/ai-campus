@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import useFx from './useFx';
 import { io } from 'socket.io-client';
 import Login from './Login';
 import AvatarPicker from './AvatarPicker';
@@ -9,19 +10,48 @@ import GamingLab from './GamingLab';
 import Battlefield from './Battlefield';
 import SummaryGrid from './SummaryGrid';
 import SummaryDetail from './SummaryDetail';
-import { API_URL, SOCKET_URL } from './config';
 import RoadmapLab from './RoadmapLab';
+import { API_URL, SOCKET_URL } from './config';
+import { initialOf } from './utils';
+import {
+  IconHome, IconMap, IconGamepad, IconRoute, IconChart,
+  IconMic, IconMicOff, IconLogout, IconChevronDown, IconGrad,
+} from './icons';
 
 const NAV_TABS = [
-  { id: 'reception', label: '🏠 Reception' },
-  { id: 'campus', label: '🗺️ Campus' },
-  { id: 'gaminglab', label: '🕹️ Gaming Lab' },
-  { id: 'roadmaplab', label: '🧭 Roadmap Lab' },
-  { id: 'summary', label: '📊 Summary' },
+  { id: 'campus', label: 'Campus', Icon: IconMap },
+  { id: 'reception', label: 'Dashboard', Icon: IconHome },
+  { id: 'gaminglab', label: 'Gaming Lab', Icon: IconGamepad },
+  { id: 'roadmaplab', label: 'Roadmap Lab', Icon: IconRoute },
+  { id: 'summary', label: 'Stats', Icon: IconChart, matches: ['summary', 'summarydetail'] },
 ];
 
+const KEY_TO_DIR = {
+  arrowup: 'up', w: 'up',
+  arrowdown: 'down', s: 'down',
+  arrowleft: 'left', a: 'left',
+  arrowright: 'right', d: 'right',
+};
+
+const VIEW_LABELS = {
+  campus: 'Campus',
+  reception: 'Dashboard',
+  gaminglab: 'Gaming Lab',
+  roadmaplab: 'Roadmap Lab',
+  summary: 'Stats',
+  summarydetail: 'Match history',
+};
+
+const EMPTY_KEYS = () => ({ up: false, down: false, left: false, right: false });
+
+function isTypingTarget(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+}
+
 function App() {
-  const [token, setToken] = useState(localStorage.getItem('token') || null);
+  const [token, setToken] = useState(() => localStorage.getItem('token') || null);
   const [me, setMe] = useState(null);
   const [loadingMe, setLoadingMe] = useState(true);
   const [players, setPlayers] = useState([]);
@@ -29,12 +59,36 @@ function App() {
   const [activeGameId, setActiveGameId] = useState(null);
   const [myPlayerId, setMyPlayerId] = useState(null);
   const [socketReady, setSocketReady] = useState(false);
-  const socketRef = useRef(null);
-  const heldKeys = useRef({ up: false, down: false, left: false, right: false });
   const [summaryDetailLabel, setSummaryDetailLabel] = useState(null);
-  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
-  // Voice + video chat hook — only becomes active once the socket is connected
+  const socketRef = useRef(null);
+  const heldKeys = useRef(EMPTY_KEYS());
+  const viewRef = useRef(view);
+  const menuRef = useRef(null);
+  const navRef = useRef(null);
+  const navIndicatorRef = useRef(null);
+
+  useFx();
+
+  // Slide the nav indicator under the active tab (direct DOM, no re-render).
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    const ind = navIndicatorRef.current;
+    if (!nav || !ind) return undefined;
+    const place = () => {
+      const active = nav.querySelector('.nav-tab.is-active');
+      if (!active) { ind.classList.remove('is-ready'); return; }
+      ind.style.width = `${active.offsetWidth}px`;
+      ind.style.transform = `translateX(${active.offsetLeft}px)`;
+      ind.classList.add('is-ready');
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  });
+  const [history, setHistory] = useState([]); // previously visited views, most recent last
+
   const {
     isMicOn, toggleMic,
     isVideoOn, toggleVideo,
@@ -43,434 +97,322 @@ function App() {
     localVideoStream,
   } = useVoiceChat(socketReady ? socketRef.current : null);
 
+  // ── Session ──────────────────────────────
   useEffect(() => {
     if (!token) { setLoadingMe(false); return; }
+    setLoadingMe(true);
     fetch(`${API_URL}/profile/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(res => { if (!res.ok) throw new Error(); return res.json(); })
-      .then(data => { setMe(data); setLoadingMe(false); })
-      .catch(() => { localStorage.removeItem('token'); setToken(null); setMe(null); setLoadingMe(false); });
+      .then((res) => { if (!res.ok) throw new Error(); return res.json(); })
+      .then((data) => { setMe(data); setLoadingMe(false); })
+      .catch(() => {
+        localStorage.removeItem('token');
+        setToken(null);
+        setMe(null);
+        setLoadingMe(false);
+      });
   }, [token]);
 
+  // ── Campus presence socket ───────────────
   useEffect(() => {
-    if (!token || !me || !me.id) return;
+    if (!token || !me?.id) return;
     const socket = io(SOCKET_URL);
     socketRef.current = socket;
     socket.on('connect', () => {
       setMyPlayerId(socket.id);
       setSocketReady(true);
-      socket.emit('identify', { displayName: me.displayName, bodyColor: me.avatar?.bodyColor || 'dodgerblue' });
+      socket.emit('identify', { token, displayName: me.displayName, bodyColor: me.avatar?.bodyColor || 'dodgerblue' });
     });
     socket.on('world-snapshot', setPlayers);
-    socket.on('player-joined', (p) => setPlayers(prev => [...prev, p]));
+    socket.on('player-joined', (p) => setPlayers((prev) => [...prev.filter((x) => x.id !== p.id), p]));
     socket.on('world-update', setPlayers);
-    socket.on('player-left', (id) => setPlayers(prev => prev.filter(p => p.id !== id)));
+    socket.on('player-left', (id) => setPlayers((prev) => prev.filter((p) => p.id !== id)));
 
     return () => {
       setSocketReady(false);
       setMyPlayerId(null);
       setPlayers([]);
       socket.disconnect();
+      if (socketRef.current === socket) socketRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, me?.id]);
 
-  const sendMoveInput = () => {
+  // ── Movement input ───────────────────────
+  const sendMoveInput = useCallback(() => {
     if (!socketRef.current) return;
-    const dx = (heldKeys.current.right ? 1 : 0) - (heldKeys.current.left ? 1 : 0);
-    const dy = (heldKeys.current.down ? 1 : 0) - (heldKeys.current.up ? 1 : 0);
+    const k = heldKeys.current;
+    const dx = (k.right ? 1 : 0) - (k.left ? 1 : 0);
+    const dy = (k.down ? 1 : 0) - (k.up ? 1 : 0);
     socketRef.current.emit('move-input', { dx, dy });
-  };
+  }, []);
+
+  const resetMovement = useCallback(() => {
+    const k = heldKeys.current;
+    const wasMoving = k.up || k.down || k.left || k.right;
+    heldKeys.current = EMPTY_KEYS();
+    if (wasMoving) sendMoveInput();
+  }, [sendMoveInput]);
+
+  // Stop the campus avatar whenever we leave the campus view, so it does not
+  // keep walking while you are in another screen.
+  useEffect(() => {
+    viewRef.current = view;
+    if (view !== 'campus') resetMovement();
+  }, [view, resetMovement]);
 
   useEffect(() => {
-    const down = (e) => {
-      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') heldKeys.current.up = true;
-      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') heldKeys.current.down = true;
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') heldKeys.current.left = true;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') heldKeys.current.right = true;
+    const handle = (e, pressed) => {
+      // Campus movement only applies on the campus view, and never while typing.
+      if (viewRef.current !== 'campus' || isTypingTarget(e.target)) return;
+      const dir = KEY_TO_DIR[e.key.toLowerCase()];
+      if (!dir) return;
+      if (e.key.startsWith('Arrow')) e.preventDefault();
+      if (heldKeys.current[dir] === pressed) return; // ignore key-repeat
+      heldKeys.current[dir] = pressed;
       sendMoveInput();
     };
-    const up = (e) => {
-      if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') heldKeys.current.up = false;
-      if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') heldKeys.current.down = false;
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') heldKeys.current.left = false;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') heldKeys.current.right = false;
-      sendMoveInput();
-    };
+    const down = (e) => handle(e, true);
+    const up = (e) => handle(e, false);
+    const onVisibility = () => { if (document.hidden) resetMovement(); };
+
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
-    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
-  }, [token]);
-
-  useEffect(() => {
-    const resetMovement = () => {
-      heldKeys.current = { up: false, down: false, left: false, right: false };
-      sendMoveInput();
-    };
-
     window.addEventListener('blur', resetMovement);
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) resetMovement();
-    });
-
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
       window.removeEventListener('blur', resetMovement);
-      document.removeEventListener('visibilitychange', resetMovement);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, []);
+  }, [sendMoveInput, resetMovement]);
+
+  // ── User menu: close on outside click / Escape ──
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointer = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+
+  // Navigate and remember where we came from, so Back returns there.
+  const navigate = (next) => {
+    if (next === view) return;
+    if (view !== 'battlefield') setHistory((h) => [...h, view].slice(-30));
+    setView(next);
+  };
+
+  // Most recent previous view that is not the current one.
+  const prevIndex = (() => {
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i] !== view && history[i] !== 'battlefield') return i;
+    }
+    return -1;
+  })();
+  const previousView = prevIndex >= 0 ? history[prevIndex] : null;
+
+  const goBack = (fallback = 'campus') => {
+    setHistory(history.slice(0, Math.max(0, prevIndex)));
+    setView(previousView || fallback);
+  };
+
+  const backLabel = (fallback = 'campus') => `Back to ${VIEW_LABELS[previousView || fallback]}`;
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    setMenuOpen(false);
+    setHistory([]);
+    setView('campus');
+    setActiveGameId(null);
     setToken(null);
     setMe(null);
-    if (socketRef.current) socketRef.current.disconnect();
   };
 
-  const handleEnterGamingLab = () => {
-    setView('gaminglab');
+  // Re-read the profile so level/XP reflect a match that just finished.
+  const refreshMe = () => {
+    if (!token) return;
+    fetch(`${API_URL}/profile/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (data?.id) setMe(data); })
+      .catch(() => {});
   };
 
   const handleEnterBuilding = (buildingId) => {
-    if (buildingId === 'roadmaplab') {
-      setView('roadmaplab');
-    } else {
-      setView('gaminglab');
-    }
+    navigate(buildingId === 'roadmaplab' ? 'roadmaplab' : 'gaminglab');
   };
 
   const handleEnterBattlefield = (gameId) => {
     setActiveGameId(gameId);
-    setView('battlefield');
+    navigate('battlefield');
   };
 
-  const handleOpenSummaryDetail = (type, buildingId, label) => {
+  const handleOpenSummaryDetail = (_type, _buildingId, label) => {
     setSummaryDetailLabel(label);
-    setView('summarydetail');
+    navigate('summarydetail');
   };
 
   // ── Loading ──────────────────────────────
-  if (loadingMe) return (
-    <div style={{
-      height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      background: '#04060e',
-      backgroundImage: `
-        radial-gradient(ellipse at 50% 30%, rgba(99, 102, 241, 0.18) 0%, transparent 65%),
-        radial-gradient(circle at 80% 70%, rgba(34, 211, 238, 0.12) 0%, transparent 55%),
-        radial-gradient(circle at 20% 70%, rgba(168, 85, 247, 0.14) 0%, transparent 55%)
-      `,
-      fontFamily: "'Outfit', 'Inter', sans-serif"
-    }}>
-      <div style={{ textAlign: 'center', animation: 'fadeIn 0.5s ease' }}>
-        <div style={{
-          position: 'relative',
-          width: '72px', height: '72px', borderRadius: '20px',
-          background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-          boxShadow: '0 0 40px rgba(139,92,246,0.6), 0 0 20px rgba(56,189,248,0.4)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '32px', marginBottom: '24px', margin: '0 auto 24px',
-          animation: 'float 2.2s ease-in-out infinite',
-        }}>
-          🎓
-          {/* Subtle Ring */}
-          <div style={{
-            position: 'absolute', top: '-6px', left: '-6px', right: '-6px', bottom: '-6px',
-            borderRadius: '24px', border: '1.5px solid rgba(56, 189, 248, 0.5)',
-            boxShadow: '0 0 16px rgba(56, 189, 248, 0.6)',
-            animation: 'pulse-ring 2s infinite'
-          }} />
+  if (loadingMe) {
+    return (
+      <div className="splash">
+        <div className="brand-mark splash-mark" style={{ width: 40, height: 40, borderRadius: 10 }}>
+          <IconGrad size={20} />
         </div>
-        <div style={{
-          width: '220px', height: '4px', background: 'rgba(255,255,255,0.06)',
-          borderRadius: '2px', overflow: 'hidden', margin: '0 auto 16px',
-        }}>
-          <div style={{
-            height: '100%', width: '60%',
-            background: 'linear-gradient(90deg, #c084fc, #38bdf8, #c084fc)',
-            borderRadius: '2px',
-            animation: 'shimmer 1.5s ease-in-out infinite',
-            backgroundSize: '200% 100%',
-          }} />
-        </div>
-        <p style={{ color: '#94a3b8', fontSize: '13.5px', fontWeight: 600, letterSpacing: '0.8px', textTransform: 'uppercase' }}>
-          Connecting to Voxel Sky Node…
-        </p>
+        <div className="row"><span className="spinner" /> Loading your session…</div>
       </div>
-      <style>{`
-        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
-      `}</style>
-    </div>
-  );
+    );
+  }
 
   // ── Login ────────────────────────────────
   if (!token || !me) return <Login onLoginSuccess={(t) => setToken(t)} />;
 
-  // ── Battlefield (full takeover) ───
-  if (view === 'battlefield') return (
-    <Battlefield
-      token={token}
-      gameId={activeGameId}
-      onExit={() => setView('gaminglab')}
-    />
-  );
+  // ── Battlefield (full takeover) ──────────
+  if (view === 'battlefield') {
+    return (
+      <Battlefield
+        token={token}
+        gameId={activeGameId}
+        onExit={() => { refreshMe(); setView('gaminglab'); }}
+      />
+    );
+  }
 
-  const isOnCampus = view === 'campus';
+  const bodyColor = me.avatar?.bodyColor || '#f59e0b';
 
   return (
-    <div style={{
-      height: '100vh', display: 'flex', flexDirection: 'column',
-      background: '#060a12', overflow: 'hidden',
-    }}>
-      {/* Top Navigation Bar */}
-      <header style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 20px', height: '60px', flexShrink: 0,
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
-        background: 'rgba(6,10,18,0.97)', backdropFilter: 'blur(20px)',
-        position: 'relative', zIndex: 50,
-        boxShadow: '0 1px 0 rgba(255,255,255,0.04), 0 4px 20px rgba(0,0,0,0.3)',
-      }}>
-        {/* Top gradient accent */}
-        <div style={{
-          position: 'absolute', top: 0, left: 0, right: 0, height: '1px',
-          background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.5), rgba(99,102,241,0.5), transparent)',
-        }} />
+    <div className="app-shell">
+      <header className="app-header">
+        <button type="button" className="brand" onClick={() => navigate('campus')} aria-label="RoboCampus home">
+          <span className="brand-mark"><IconGrad size={16} /></span>
+          <span className="brand-name">RoboCampus</span>
+        </button>
 
-        {/* Logo */}
-        <div
-          onClick={() => setView('campus')}
-          style={{ display: 'flex', alignItems: 'center', gap: '11px', cursor: 'pointer' }}
-        >
-          <div style={{
-            width: '36px', height: '36px', borderRadius: '10px',
-            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-            boxShadow: '0 0 20px rgba(139,92,246,0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '18px', flexShrink: 0,
-          }}>🎓</div>
-          <span style={{ fontWeight: 800, fontSize: '16px', color: '#ffffff', letterSpacing: '-0.3px' }}>
-            Robo<span style={{ color: '#38bdf8' }}>Campus</span>
-          </span>
-        </div>
-
-        {/* Nav tabs */}
-        <nav style={{
-          display: 'flex', gap: '3px',
-          background: 'rgba(15, 23, 42, 0.65)',
-          padding: '4px 6px',
-          borderRadius: '14px',
-          border: '1px solid rgba(255,255,255,0.07)',
-          backdropFilter: 'blur(12px)'
-        }}>
-          {NAV_TABS.map(tab => {
-            const isActive = view === tab.id;
+        <nav className="app-nav" aria-label="Main" ref={navRef}>
+          <span className="nav-indicator" ref={navIndicatorRef} aria-hidden="true" />
+          {NAV_TABS.map(({ id, label, Icon, matches }) => {
+            const isActive = matches ? matches.includes(view) : view === id;
             return (
               <button
-                key={tab.id}
-                onClick={() => setView(tab.id)}
-                style={{
-                  padding: '7px 15px',
-                  borderRadius: '10px',
-                  border: isActive ? '1px solid rgba(96, 165, 250, 0.6)' : '1px solid transparent',
-                  background: isActive ? 'rgba(30, 58, 138, 0.45)' : 'transparent',
-                  color: isActive ? '#93c5fd' : '#94a3b8',
-                  boxShadow: isActive ? '0 0 16px rgba(59, 130, 246, 0.4), inset 0 0 10px rgba(59, 130, 246, 0.2)' : 'none',
-                  fontSize: '13px',
-                  fontWeight: isActive ? 700 : 500,
-                  cursor: 'pointer',
-                  transition: 'all 0.18s ease',
-                  letterSpacing: '-0.1px',
-                  whiteSpace: 'nowrap',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-                onMouseEnter={e => { if (!isActive) { e.currentTarget.style.color = '#f1f5f9'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; } }}
-                onMouseLeave={e => { if (!isActive) { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; } }}
+                key={id}
+                type="button"
+                className={`nav-tab ${isActive ? 'is-active' : ''}`}
+                aria-current={isActive ? 'page' : undefined}
+                onClick={() => navigate(id)}
+                title={label}
               >
-                {tab.label}
+                <Icon size={15} />
+                <span className="nav-tab-label">{label}</span>
               </button>
             );
           })}
         </nav>
 
-        {/* User info */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', position: 'relative' }}>
-          {/* Level chip */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '7px',
-            padding: '5px 12px', borderRadius: '20px',
-            background: 'rgba(15, 23, 42, 0.75)', border: '1px solid rgba(255,255,255,0.08)',
-          }}>
-            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#38bdf8', boxShadow: '0 0 8px #38bdf8' }} />
-            <span style={{ color: '#cbd5e1', fontSize: '12px', fontWeight: 700 }}>Lv.{me.profile?.level || 1}</span>
-            <span style={{ color: '#475569', fontSize: '11px' }}>·</span>
-            <span style={{ color: '#94a3b8', fontSize: '11.5px' }}>{me.profile?.xp || 0} XP</span>
+        <div className="header-actions">
+          <div className="level-chip" title="Level and experience">
+            <strong>Level {me.profile?.level || 1}</strong>
+            <span className="dim">·</span>
+            <span>{me.profile?.xp || 0} XP</span>
           </div>
 
-          {/* Avatar button with name & color picker popover */}
-          <div
-            onClick={() => setShowAvatarPicker(prev => !prev)}
-            title="Click to change your avatar color"
-            style={{
-              display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
-              padding: '3px 8px 3px 3px', borderRadius: '20px',
-              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-              transition: 'all 0.15s ease'
-            }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(96, 165, 250, 0.5)'}
-            onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'}
-          >
-            <div style={{
-              width: '32px', height: '32px', borderRadius: '50%',
-              background: `radial-gradient(circle at 30% 30%, ${me.avatar?.bodyColor || '#3b82f6'}, ${me.avatar?.bodyColor || '#3b82f6'}88)`,
-              border: '2px solid rgba(255,255,255,0.2)',
-              boxShadow: `0 0 12px ${me.avatar?.bodyColor || '#3b82f6'}66`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: 'white', fontWeight: 800, fontSize: '13px',
-            }}>
-              {me.displayName[0].toUpperCase()}
-            </div>
-            <span style={{ color: '#f1f5f9', fontSize: '13px', fontWeight: 600, maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {me.displayName}
-            </span>
-          </div>
-
-          {/* Color Picker Dropdown Popover */}
-          {showAvatarPicker && (
-            <div style={{
-              position: 'absolute',
-              top: '52px',
-              right: '90px',
-              zIndex: 100,
-              background: 'rgba(10, 16, 28, 0.95)',
-              backdropFilter: 'blur(20px)',
-              WebkitBackdropFilter: 'blur(20px)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: '16px',
-              padding: '12px 16px',
-              boxShadow: '0 16px 40px rgba(0,0,0,0.8), 0 0 20px rgba(99,102,241,0.2)',
-            }}>
-              <AvatarPicker
-                token={token}
-                currentColor={me.avatar?.bodyColor || 'dodgerblue'}
-                onUpdated={(newAvatar) => {
-                  setMe(prev => ({ ...prev, avatar: newAvatar }));
-                  if (socketRef.current) {
-                    socketRef.current.emit('identify', {
-                      displayName: me.displayName,
-                      bodyColor: newAvatar.bodyColor,
-                    });
-                  }
-                  setShowAvatarPicker(false);
-                }}
-              />
-            </div>
-          )}
-
-          {/* Audio toggle button in header */}
           <button
+            type="button"
+            className={`icon-btn ${isMicOn ? 'is-on' : ''}`}
             onClick={toggleMic}
-            title={isMicOn ? 'Turn microphone off' : 'Turn microphone on'}
-            style={{
-              width: '34px', height: '34px', borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: isMicOn ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.04)',
-              border: isMicOn ? '1px solid rgba(16,185,129,0.45)' : '1px solid rgba(255,255,255,0.08)',
-              color: isMicOn ? '#10b981' : '#64748b',
-              fontSize: '14px', cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
+            title={isMicOn ? 'Mute microphone' : 'Unmute microphone'}
+            aria-pressed={isMicOn}
           >
-            {isMicOn ? '🎤' : '🔇'}
+            {isMicOn ? <IconMic size={16} /> : <IconMicOff size={16} />}
           </button>
 
-          {/* Calendar / Tasks button */}
-          <button
-            onClick={() => setView('summary')}
-            title="View Summary & Schedule"
-            style={{
-              width: '34px', height: '34px', borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: '#94a3b8',
-              fontSize: '14px', cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}
-          >
-            📅
-          </button>
+          <div className="user-menu" ref={menuRef}>
+            <button
+              type="button"
+              className="user-trigger"
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+            >
+              <span className="avatar" style={{ background: bodyColor }}>{initialOf(me.displayName)}</span>
+              <span className="user-trigger-name truncate">{me.displayName}</span>
+              <IconChevronDown size={14} />
+            </button>
 
-          {/* Logout button */}
-          <button
-            onClick={handleLogout}
-            style={{
-              padding: '6px 14px', borderRadius: '9px',
-              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
-              color: '#f87171', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
-              transition: 'all 0.15s',
-              letterSpacing: '0.2px'
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.18)'; e.currentTarget.style.boxShadow = '0 0 12px rgba(239,68,68,0.3)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; e.currentTarget.style.boxShadow = 'none'; }}
-          >
-            Logout
-          </button>
+            {menuOpen && (
+              <div className="menu" role="menu">
+                <div className="menu-header">
+                  <div className="truncate" style={{ fontWeight: 600, color: 'var(--text-strong)' }}>{me.displayName}</div>
+                  {me.email && <div className="truncate dim" style={{ fontSize: 12.5 }}>{me.email}</div>}
+                </div>
+                <div className="menu-section">
+                  <div className="menu-label">Avatar color</div>
+                  <AvatarPicker
+                    token={token}
+                    currentColor={me.avatar?.bodyColor || 'dodgerblue'}
+                    onUpdated={(newAvatar) => {
+                      if (!newAvatar) return;
+                      setMe((prev) => ({ ...prev, avatar: newAvatar }));
+                      socketRef.current?.emit('identify', {
+                        token,
+                        displayName: me.displayName,
+                        bodyColor: newAvatar.bodyColor,
+                      });
+                    }}
+                  />
+                </div>
+                <button type="button" role="menuitem" className="menu-item is-danger" onClick={handleLogout}>
+                  <IconLogout size={15} /> Sign out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
-      <style>{`
-        @keyframes micPulse {
-          0%, 100% { box-shadow: 0 0 0 4px rgba(16,185,129,0.15); }
-          50% { box-shadow: 0 0 0 8px rgba(16,185,129,0.05); }
-        }
-        @keyframes videoPulse {
-          0%, 100% { box-shadow: 0 0 0 4px rgba(59,130,246,0.15); }
-          50% { box-shadow: 0 0 0 8px rgba(59,130,246,0.05); }
-        }
-      `}</style>
-
-      {/* Main content area */}
-      <main style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-        {/* Reception */}
+      <main className="app-main">
+        <div key={view} className="view-stage">
         {view === 'reception' && (
-          <div style={{ height: '100%', overflowY: 'auto' }}>
+          <div className="app-scroll">
             <Reception
               me={me}
               token={token}
-              onEnterGamingLab={handleEnterGamingLab}
+              onEnterGamingLab={() => navigate('gaminglab')}
+              onEnterRoadmapLab={() => navigate('roadmaplab')}
               onEnterBattlefield={handleEnterBattlefield}
-              onOpenSummary={() => setView('summary')}
+              onOpenSummary={() => navigate('summary')}
+              onBack={() => goBack('campus')}
+              backLabel={backLabel('campus')}
             />
           </div>
         )}
 
-        {/* Summary Grid */}
         {view === 'summary' && (
-          <div style={{ height: '100%', overflowY: 'auto' }}>
+          <div className="app-scroll">
             <SummaryGrid
               token={token}
               onOpenDetail={handleOpenSummaryDetail}
-              onBack={() => setView('reception')}
+              onBack={() => goBack('reception')}
+              backLabel={backLabel('reception')}
             />
           </div>
         )}
 
-        {/* Summary Detail */}
         {view === 'summarydetail' && (
-          <div style={{ height: '100%', overflowY: 'auto' }}>
+          <div className="app-scroll">
             <SummaryDetail
               token={token}
               label={summaryDetailLabel}
-              onBack={() => setView('summary')}
+              onBack={() => goBack('summary')}
+              backLabel={backLabel('summary')}
             />
           </div>
         )}
 
-        {/* Campus map */}
-        {isOnCampus && (
+        {view === 'campus' && (
           <CampusWorld
             players={players}
             myPlayerId={myPlayerId}
@@ -487,25 +429,23 @@ function App() {
           />
         )}
 
-        {/* Gaming Lab */}
         {view === 'gaminglab' && (
-          <div style={{ height: '100%', minHeight: 0, overflow: 'hidden' }}>
+          <div className="app-scroll">
             <GamingLab
               token={token}
               onEnterBattlefield={handleEnterBattlefield}
+              onBack={() => goBack('campus')}
+              backLabel={backLabel('campus')}
             />
           </div>
         )}
 
-        {/* Roadmap Lab */}
         {view === 'roadmaplab' && (
           <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-            <RoadmapLab
-              token={token}
-              onExit={() => setView('campus')}
-            />
+            <RoadmapLab token={token} onExit={() => goBack('campus')} backLabel={backLabel('campus')} />
           </div>
         )}
+        </div>
       </main>
     </div>
   );

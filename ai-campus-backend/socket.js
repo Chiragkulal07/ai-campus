@@ -4,6 +4,7 @@ const User = require('./models/User');
 
 // In-memory states
 const players = {};
+let worldDirty = false; // a campus player's movement state changed and must be broadcast
 const voiceParticipants = new Set();
 const activeBattles = {};
 const latencyByUserId = {}; // userId -> RTT in ms, updated via ping/pong
@@ -176,17 +177,34 @@ function initSocket(io) {
   io.on('connection', (socket) => {
     console.log('player joined:', socket.id);
 
-    players[socket.id] = {
-      id: socket.id, x: 1040, y: 480, dx: 0, dy: 0,
-      displayName: 'Guest', bodyColor: 'dodgerblue'
-    };
-
+    // A campus avatar is only created once the client identifies itself.
+    // Other sockets (match list, battlefield) never get a ghost avatar.
     socket.emit('world-snapshot', Object.values(players));
-    socket.broadcast.emit('player-joined', players[socket.id]);
 
-    socket.on('identify', (info) => {
-      const player = players[socket.id];
-      if (!player) return;
+    socket.on('identify', (info = {}) => {
+      const userId = info.token ? getUserIdFromToken(info.token) : null;
+
+      // Same user connecting again (page refresh, second tab): drop their
+      // previous avatar right away instead of waiting for the old socket to
+      // time out, so the user never appears twice.
+      if (userId) {
+        for (const id in players) {
+          if (id !== socket.id && players[id].userId === userId) {
+            delete players[id];
+            io.emit('player-left', id);
+          }
+        }
+      }
+
+      let player = players[socket.id];
+      if (!player) {
+        player = {
+          id: socket.id, userId, x: 1040, y: 480, dx: 0, dy: 0,
+          displayName: 'Guest', bodyColor: 'dodgerblue'
+        };
+        players[socket.id] = player;
+      }
+      if (userId) player.userId = userId;
       if (info.displayName) player.displayName = info.displayName;
       if (info.bodyColor) player.bodyColor = info.bodyColor;
       io.emit('world-update', Object.values(players));
@@ -195,8 +213,13 @@ function initSocket(io) {
     socket.on('move-input', (input) => {
       const player = players[socket.id];
       if (!player) return;
-      player.dx = Math.max(-1, Math.min(1, input.dx));
-      player.dy = Math.max(-1, Math.min(1, input.dy));
+      const dx = Math.max(-1, Math.min(1, Number(input?.dx) || 0));
+      const dy = Math.max(-1, Math.min(1, Number(input?.dy) || 0));
+      // Direction changed (incl. stopping): make sure the next tick broadcasts it,
+      // otherwise clients never learn the player stopped and keep the walk animation.
+      if (dx !== player.dx || dy !== player.dy) worldDirty = true;
+      player.dx = dx;
+      player.dy = dy;
     });
 
     // Voice + video signaling
@@ -404,7 +427,10 @@ function initSocket(io) {
         somethingMoved = true;
       }
     }
-    if (somethingMoved) io.emit('world-update', Object.values(players));
+    if (somethingMoved || worldDirty) {
+      worldDirty = false;
+      io.emit('world-update', Object.values(players));
+    }
   }, 100);
 
   setInterval(() => {

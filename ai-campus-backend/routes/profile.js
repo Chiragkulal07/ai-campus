@@ -3,11 +3,27 @@ const router = express.Router();
 const requireAuth = require('../middleware/auth');
 const User = require('../models/User');
 const GameMatch = require('../models/GameMatch');
+const { computeProgress } = require('../lib/progress');
 
 router.get('/me', requireAuth, async (req, res) => {
   const user = await User.findById(req.userId);
   if (!user) return res.status(404).json({ error: 'user not found' });
-  res.json({ id: user._id, email: user.email, displayName: user.displayName, avatar: user.avatar, profile: user.profile });
+  // Level/XP are derived from real match history rather than the stored defaults.
+  const progress = computeProgress(user.gameHistory);
+  const stored = user.profile?.toObject ? user.profile.toObject() : (user.profile || {});
+  res.json({
+    id: user._id,
+    email: user.email,
+    displayName: user.displayName,
+    avatar: user.avatar,
+    profile: {
+      ...stored,
+      level: progress.level,
+      xp: progress.xp,
+      xpIntoLevel: progress.xpIntoLevel,
+      xpPerLevel: progress.xpPerLevel,
+    },
+  });
 });
 
 router.put('/avatar', requireAuth, async (req, res) => {
@@ -31,14 +47,20 @@ router.get('/me/games', requireAuth, async (req, res) => {
 
 router.get('/me/summary', requireAuth, async (req, res) => {
   const user = await User.findById(req.userId).select('gameHistory');
-  const gameHistory = user?.gameHistory || [];
+  if (!user) return res.status(404).json({ error: 'user not found' });
+  const p = computeProgress(user.gameHistory || []);
 
   res.json({
-    labs: [],
+    progress: { level: p.level, xp: p.xp, xpIntoLevel: p.xpIntoLevel, xpPerLevel: p.xpPerLevel },
     gamingLab: {
-      totalMatches: gameHistory.length,
-      totalKills: gameHistory.reduce((sum, g) => sum + (g.kills || 0), 0)
-    }
+      totalMatches: p.totalMatches,
+      totalKills: p.totalKills,
+      wins: p.wins,
+      podiums: p.podiums,
+      bestKills: p.bestKills,
+      winRate: p.winRate,
+      avgKills: p.avgKills,
+    },
   });
 });
 

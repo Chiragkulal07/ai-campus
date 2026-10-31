@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import MatchResults from './MatchResults';
+import './battlefield.css';
+import ArenaFighter from './ArenaFighter';
+import { formatDuration, initialOf, readJson } from './utils';
+import { IconAlert, IconArrowLeft, IconClock, IconCrown, IconTarget, IconUsers } from './icons';
 import { API_URL, SOCKET_URL } from './config';
 
 const FIRE_RATE_MS = 220; // ~4.5 shots per second while held down
@@ -33,6 +37,9 @@ function Battlefield({ token, gameId, onExit }) {
   const [walls, setWalls] = useState([]);
   const [players, setPlayers] = useState([]);
   const [msRemaining, setMsRemaining] = useState(0);
+  // Local deadline for the match clock. The server only sends updates when
+  // someone moves, so we count down locally and re-sync on every update.
+  const endAtRef = useRef(null);
   const [aimAngle, setAimAngle] = useState(0);
   const [cursorPercent, setCursorPercent] = useState({ x: 50, y: 50 });
   const [tracers, setTracers] = useState([]);
@@ -53,6 +60,7 @@ function Battlefield({ token, gameId, onExit }) {
   const wallsRef = useRef([]);
   const arenaSizeRef = useRef({ w: 1000, h: 800 });
   const animFrameRef = useRef(null);
+  const motionRef = useRef({}); // per-player { x, y, movedAt, facing } for walk/facing visuals
   const predictionIntervalRef = useRef(null);
   const pingIntervalRef = useRef(null);
 
@@ -83,8 +91,8 @@ function Battlefield({ token, gameId, onExit }) {
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
       setMyUserId(payload.userId);
-    } catch (err) {
-      setErrorMsg('could not read session');
+    } catch {
+      setErrorMsg('Your session is invalid. Please sign in again.');
     }
   }, [token]);
 
@@ -92,12 +100,23 @@ function Battlefield({ token, gameId, onExit }) {
     fetch(`${API_URL}/games/${gameId}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
-      .then((res) => res.json())
+      .then(async (res) => {
+        const data = await readJson(res);
+        if (!res.ok) throw new Error(data.error || 'Could not load this match.');
+        return data;
+      })
       .then((data) => {
+        if (data.status === 'COMPLETED') {
+          setErrorMsg('This match has already ended.');
+          return;
+        }
         setGameInfo(data);
         setPhase(data.status === 'IN_PROGRESS' ? 'in_progress' : 'waiting');
       })
-      .catch(() => setErrorMsg('could not load game details'));
+      .catch((err) => {
+        const msg = err.message === 'Failed to fetch' ? 'Unable to reach the server.' : err.message;
+        setErrorMsg(msg.charAt(0).toUpperCase() + msg.slice(1));
+      });
   }, [gameId, token]);
 
   // Same collision rule as the server's isPositionBlocked — must stay in sync
@@ -189,12 +208,14 @@ function Battlefield({ token, gameId, onExit }) {
       wallsRef.current = state.walls;
       setArenaSize({ w: state.arenaWidth, h: state.arenaHeight });
       arenaSizeRef.current = { w: state.arenaWidth, h: state.arenaHeight };
+      endAtRef.current = Date.now() + state.msRemaining;
       setMsRemaining(state.msRemaining);
       seedPlayerState(state.players);
       setPlayers(state.players); // initial paint before the render loop takes over
     });
 
     socket.on('battle:update', (data) => {
+      endAtRef.current = Date.now() + data.msRemaining;
       setMsRemaining(data.msRemaining);
 
       data.players.forEach((p) => {
@@ -248,7 +269,14 @@ function Battlefield({ token, gameId, onExit }) {
 
     socket.on('battle:kill', (data) => {
       const feedId = `${data.victimId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      setKillFeed((prev) => [...prev, { id: feedId, text: `${data.killerName} ➔ ${data.victimName}` }]);
+      setKillFeed((prev) => [...prev, {
+        id: feedId,
+        text: `${data.killerName} eliminated ${data.victimName}`,
+        killer: data.killerName,
+        victim: data.victimName,
+        killerId: data.killerId,
+        victimId: data.victimId,
+      }].slice(-5));
       setTimeout(() => setKillFeed((prev) => prev.filter((k) => k.id !== feedId)), 4000);
 
       const m = metaRef.current[data.victimId];
@@ -319,13 +347,27 @@ function Battlefield({ token, gameId, onExit }) {
     if (phase !== 'in_progress') return;
 
     function frame() {
+      const now = performance.now();
+      const motion = motionRef.current;
+      const withMotion = (m, pos) => {
+        const prev = motion[m.userId];
+        let movedAt = prev ? prev.movedAt : 0;
+        let facing = prev ? prev.facing : 1;
+        if (prev) {
+          const dx = pos.x - prev.x;
+          const dy = pos.y - prev.y;
+          if (Math.abs(dx) > 0.2 || Math.abs(dy) > 0.2) movedAt = now;
+          if (Math.abs(dx) > 0.2) facing = dx < 0 ? -1 : 1;
+        }
+        motion[m.userId] = { x: pos.x, y: pos.y, movedAt, facing };
+        // own position updates every server tick (100ms), so allow a small grace window
+        return { ...m, x: pos.x, y: pos.y, moving: now - movedAt < 180, facing };
+      };
       const merged = Object.values(metaRef.current).map((m) => {
         if (m.userId === myUserId) {
-          const pos = predictedPosRef.current || { x: 0, y: 0 };
-          return { ...m, x: pos.x, y: pos.y };
+          return withMotion(m, predictedPosRef.current || { x: 0, y: 0 });
         }
-        const pos = getInterpolatedPosition(m.userId, 0, 0);
-        return { ...m, x: pos.x, y: pos.y };
+        return withMotion(m, getInterpolatedPosition(m.userId, 0, 0));
       });
       setPlayers(merged);
       animFrameRef.current = requestAnimationFrame(frame);
@@ -334,6 +376,16 @@ function Battlefield({ token, gameId, onExit }) {
     animFrameRef.current = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(animFrameRef.current);
   }, [phase, myUserId]);
+
+  // ── Match clock: tick locally so the timer runs even when nobody moves ──
+  useEffect(() => {
+    if (phase !== 'in_progress') return undefined;
+    const id = setInterval(() => {
+      if (endAtRef.current == null) return;
+      setMsRemaining(Math.max(0, endAtRef.current - Date.now()));
+    }, 250);
+    return () => clearInterval(id);
+  }, [phase]);
 
   // ── Ping loop: measure RTT periodically so the server can lag-compensate our shots ──
   useEffect(() => {
@@ -484,11 +536,20 @@ function Battlefield({ token, gameId, onExit }) {
       if (key === ' ') stopFiring();
       sendMoveInput();
     };
+    // Release all inputs when the window loses focus (e.g. alt-tab),
+    // otherwise the player keeps moving/firing with no key held.
+    const handleBlur = () => {
+      heldKeys.current = { up: false, down: false, left: false, right: false };
+      stopFiring();
+      sendMoveInput();
+    };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
       stopFiring();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -496,131 +557,105 @@ function Battlefield({ token, gameId, onExit }) {
 
   if (phase === 'loading') {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh', color: 'rgba(255,255,255,0.7)' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: '40px', height: '40px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
-          <p style={{ letterSpacing: '1px', textTransform: 'uppercase', fontSize: '12px' }}>Connecting to lobby...</p>
-        </div>
+      <div className="splash">
+        {errorMsg ? (
+          <>
+            <div className="alert" style={{ maxWidth: 360 }}><IconAlert size={15} /><span>{errorMsg}</span></div>
+            <button type="button" className="btn btn-secondary" onClick={onExit}>
+              <IconArrowLeft size={15} /> Back to Gaming Lab
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="row"><span className="spinner" /> Connecting to match…</div>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onExit}>
+              <IconArrowLeft size={14} /> Back to Gaming Lab
+            </button>
+          </>
+        )}
       </div>
     );
   }
 
   if (phase === 'waiting') {
     const isCreator = gameInfo && myUserId === gameInfo.creatorId;
+    const participants = gameInfo?.participants || [];
 
     return (
-      <div style={{
-        padding: '36px',
-        maxWidth: '580px',
-        margin: '60px auto',
-        background: 'linear-gradient(135deg, rgba(88, 28, 135, 0.25) 0%, rgba(15, 23, 42, 0.88) 100%)',
-        backdropFilter: 'blur(24px)',
-        WebkitBackdropFilter: 'blur(24px)',
-        border: '1.5px solid rgba(192, 132, 252, 0.4)',
-        borderRadius: '26px',
-        boxShadow: '0 25px 70px rgba(0,0,0,0.8), 0 0 30px rgba(168, 85, 247, 0.2)',
-        textAlign: 'center',
-        fontFamily: "'Outfit', 'Inter', sans-serif"
-      }}>
-        <button
-          onClick={onExit}
-          style={{
-            marginBottom: '24px',
-            cursor: 'pointer',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            color: '#94a3b8',
-            padding: '8px 16px',
-            borderRadius: '12px',
-            fontSize: '13px',
-            fontWeight: 500,
-            transition: 'all 0.2s',
-            outline: 'none'
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#fff'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.color = '#94a3b8'; }}
-        >
-          ← Leave Lobby
-        </button>
+      <div className="app-scroll">
+        <div className="page page-narrow" style={{ maxWidth: 560, paddingTop: 40 }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onExit} style={{ marginBottom: 16, marginLeft: -10 }}>
+            <IconArrowLeft size={14} /> Leave lobby
+          </button>
 
-        <h2 style={{ color: '#fff', fontSize: '26px', fontWeight: 800, marginBottom: '4px', letterSpacing: '-0.5px' }}>
-          {gameInfo ? gameInfo.name : 'Match Arena'}
-        </h2>
-        <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '24px' }}>
-          {isCreator ? 'You are the host. Start when ready!' : 'Waiting for the host to launch the match...'}
-        </p>
+          <div className="card lobby-card" style={{ padding: 24 }}>
+            <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <h1 className="page-title truncate">{gameInfo ? gameInfo.name : 'Match lobby'}</h1>
+                <p className="page-subtitle">
+                  {isCreator ? 'You are the host. Start the match when everyone is ready.' : 'Waiting for the host to start the match.'}
+                </p>
+              </div>
+              <span className="badge badge-green"><span className="dot dot-live" /> Lobby</span>
+            </div>
 
-        {errorMsg && (
-          <div style={{ padding: '10px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '12px', color: '#f87171', fontSize: '13px', marginBottom: '20px' }}>
-            {errorMsg}
-          </div>
-        )}
+            {gameInfo && (
+              <div className="list-row-meta" style={{ marginTop: 12 }}>
+                <span><IconUsers size={13} /> {participants.length}/{gameInfo.maxPlayers} players</span>
+                {gameInfo.durationSec ? <span><IconClock size={13} /> {formatDuration(gameInfo.durationSec)}</span> : null}
+              </div>
+            )}
 
-        <div style={{ margin: '24px 0', textAlign: 'left' }}>
-          <p style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '12px' }}>
-            Roster ({gameInfo?.participants?.length || 0})
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {gameInfo && gameInfo.participants.map((p) => {
-              const isPlayerHost = p.userId === gameInfo.creatorId;
-              return (
-                <div
-                  key={p.userId}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 16px',
-                    background: p.userId === myUserId ? 'rgba(99, 102, 241, 0.08)' : 'rgba(255,255,255,0.02)',
-                    border: `1px solid ${p.userId === myUserId ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.04)'}`,
-                    borderRadius: '12px',
-                    color: '#e2e8f0',
-                    fontWeight: p.userId === myUserId ? 600 : 400
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: p.userId === myUserId ? '#6366f1' : '#10b981', boxShadow: `0 0 8px ${p.userId === myUserId ? '#6366f1' : '#10b981'}` }} />
-                    <span>{p.displayName} {p.userId === myUserId && '(You)'}</span>
+            {errorMsg && (
+              <div className="alert" style={{ marginTop: 16 }}><IconAlert size={15} /><span>{errorMsg}</span></div>
+            )}
+
+            <div className="section-title" style={{ marginTop: 24, marginBottom: 8 }}>Players</div>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+              {participants.length === 0 && (
+                <div className="muted" style={{ padding: '12px 14px', fontSize: 13 }}>No players yet.</div>
+              )}
+              {participants.map((p, i) => {
+                const isYou = p.userId === myUserId;
+                const isHost = p.userId === gameInfo.creatorId;
+                return (
+                  <div
+                    key={p.userId}
+                    className="row lobby-row"
+                    style={{
+                      '--i': i,
+                      justifyContent: 'space-between',
+                      padding: '10px 14px',
+                      borderTop: i ? '1px solid var(--border)' : 'none',
+                      background: isYou ? 'var(--accent-soft)' : 'transparent',
+                    }}
+                  >
+                    <div className="row" style={{ gap: 10, minWidth: 0 }}>
+                      <span className="avatar" style={{ width: 26, height: 26, fontSize: 11, background: 'var(--surface-3)' }}>
+                        {initialOf(p.displayName)}
+                      </span>
+                      <span className="truncate" style={{ fontWeight: isYou ? 600 : 500 }}>{p.displayName}</span>
+                      {isYou && <span className="badge badge-accent">You</span>}
+                    </div>
+                    {isHost && <span className="badge badge-yellow"><IconCrown size={11} /> Host</span>}
                   </div>
-                  {isPlayerHost && (
-                    <span style={{ fontSize: '10px', background: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.25)', padding: '2px 8px', borderRadius: '20px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                      Host
-                    </span>
-                  )}
+                );
+              })}
+            </div>
+
+            <div style={{ marginTop: 24 }}>
+              {isCreator ? (
+                <button type="button" className="btn btn-primary btn-lg btn-block" onClick={handleStartMatch}>
+                  Start match
+                </button>
+              ) : (
+                <div className="row muted" style={{ justifyContent: 'center', padding: 12, fontSize: 13.5 }}>
+                  <span className="radar"><span /></span> Waiting for host…
                 </div>
-              );
-            })}
+              )}
+            </div>
           </div>
         </div>
-
-        {isCreator ? (
-          <button
-            onClick={handleStartMatch}
-            style={{
-              width: '100%',
-              padding: '16px 28px',
-              borderRadius: '14px',
-              cursor: 'pointer',
-              background: 'linear-gradient(135deg, #7c3aed 0%, #2563eb 50%, #06b6d4 100%)',
-              border: 'none',
-              boxShadow: '0 8px 25px rgba(124, 58, 237, 0.45)',
-              color: '#fff',
-              fontWeight: 800,
-              fontSize: '15.5px',
-              letterSpacing: '0.3px',
-              transition: 'transform 0.15s, opacity 0.15s'
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.02)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-          >
-            🚀 Launch Arena Match
-          </button>
-        ) : (
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', padding: '14px', background: 'rgba(255,255,255,0.03)', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#38bdf8', animation: 'spin 1.5s infinite' }} />
-            <p style={{ color: '#94a3b8', fontSize: '13.5px', margin: 0 }}>Waiting for host to launch battle...</p>
-          </div>
-        )}
       </div>
     );
   }
@@ -633,21 +668,17 @@ function Battlefield({ token, gameId, onExit }) {
   const minutes = String(Math.floor(secondsLeft / 60)).padStart(2, '0');
   const seconds = String(secondsLeft % 60).padStart(2, '0');
   const me = players.find((p) => p.userId === myUserId);
-  const facingLeft = Math.cos(aimAngle) < 0;
+  const myHp = me ? Math.max(0, me.hp) : 0;
+  const totalMs = (gameInfo?.durationSec || 0) * 1000;
+  const timePct = totalMs > 0 ? Math.max(0, Math.min(100, (msRemaining / totalMs) * 100)) : 100;
+  const isFinalSeconds = secondsLeft <= 10;
+  const isCritical = !!me && me.hp > 0 && me.hp <= 40;
+  const isDown = !!me && me.hp <= 0;
+  const hpSegments = Math.ceil(myHp / 20); // 5 segments: one hit = 20 HP
+  const standings = [...players].sort((a, b) => (b.kills || 0) - (a.kills || 0));
 
   return (
-    <div style={{
-      height: '100dvh',
-      width: '100%',
-      maxWidth: '1240px',
-      margin: '0 auto',
-      padding: '12px 20px',
-      boxSizing: 'border-box',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden',
-      color: '#e2e8f0',
-    }}>
+    <div className="bf">
       <style>{`
         @keyframes bullet-fly {
           0% { transform: translate(0px, 0px); }
@@ -655,435 +686,261 @@ function Battlefield({ token, gameId, onExit }) {
         }
       `}</style>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', gap: '16px', flexShrink: 0 }}>
-        <button
-          onClick={onExit}
-          style={{
-            cursor: 'pointer',
-            background: 'rgba(255,255,255,0.03)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            color: '#94a3b8',
-            padding: '8px 16px',
-            borderRadius: '12px',
-            fontSize: '13px',
-            fontWeight: 500,
-            transition: 'all 0.2s'
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = '#fff'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; e.currentTarget.style.color = '#94a3b8'; }}
-        >
-          ← Leave Match
-        </button>
-
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '24px',
-          background: 'rgba(15, 23, 42, 0.6)',
-          backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          padding: '8px 24px',
-          borderRadius: '14px',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
-        }}>
-          <span style={{ fontSize: '15px', color: '#f1f5f9', fontWeight: 700, letterSpacing: '0.5px' }}>
-            ⏱ {minutes}:{seconds}
-          </span>
-          <div style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.1)' }} />
-          <span style={{ fontSize: '14px', color: '#818cf8', fontWeight: 600 }}>
-            KILLS: <strong style={{ color: '#fff', fontSize: '16px' }}>{me ? me.kills : 0}</strong>
-          </span>
-          {lockedPlayerId && (
-            <>
-              <div style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.1)' }} />
-              <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 700, letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '4px', animation: 'pulse 1s infinite' }}>
-                🎯 TARGET LOCKED
-              </span>
-            </>
-          )}
+      {/* ── HUD ─────────────────────────────────────────── */}
+      <header className="bf-hud">
+        <div className="bf-hud-left">
+          <button type="button" className="bf-leave" onClick={onExit}>
+            <IconArrowLeft size={14} /> Leave
+          </button>
+          <div className="bf-match">
+            <span className="bf-live"><i /> Live</span>
+            <span className="bf-match-name">{gameInfo?.name || 'Arena match'}</span>
+          </div>
         </div>
-      </div>
+
+        <div className={`bf-timer ${isFinalSeconds ? 'is-final' : ''}`}>
+          <div className="bf-timer-digits">
+            <span>{minutes}</span><b>:</b><span>{seconds}</span>
+          </div>
+          <div className="bf-timer-bar"><div style={{ width: `${timePct}%` }} /></div>
+        </div>
+
+        <div className="bf-hud-right">
+          <div className="bf-stat">
+            <span className="bf-stat-label">Kills</span>
+            <span className="bf-stat-value" key={me ? me.kills : 0}>{me ? me.kills : 0}</span>
+          </div>
+          <div className={`bf-hp ${isCritical ? 'is-critical' : ''}`} aria-label={`Health ${myHp}`}>
+            <span className="bf-stat-label">HP</span>
+            <div className="bf-hp-cells">
+              {[0, 1, 2, 3, 4].map((i) => <i key={i} className={i < hpSegments ? 'is-on' : ''} />)}
+            </div>
+            <span className="bf-hp-num">{myHp}</span>
+          </div>
+        </div>
+      </header>
 
       {errorMsg && (
-        <div style={{ padding: '10px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '12px', color: '#f87171', fontSize: '13px', marginBottom: '12px' }}>
-          {errorMsg}
-        </div>
+        <div className="alert" style={{ margin: '0 0 10px' }}><IconAlert size={15} /><span>{errorMsg}</span></div>
       )}
 
-      <div
-        ref={arenaViewportRef}
-        style={{
-          flex: 1,
-          minHeight: 0,
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <div
-          ref={arenaRef}
-          onMouseMove={handleMouseMove}
-          onMouseDown={(e) => { e.preventDefault(); startFiring(); }}
-          onMouseUp={stopFiring}
-          onMouseLeave={stopFiring}
-          onDoubleClick={(e) => { e.preventDefault(); fireOnce(); }}
-          style={{
-            position: 'relative',
-            width: `${arenaDisplaySize.w}px`,
-            height: `${arenaDisplaySize.h}px`,
-            flexShrink: 0,
-            background: '#090d16',
-            backgroundImage: `
-              linear-gradient(rgba(99, 102, 241, 0.05) 1.5px, transparent 1.5px),
-              linear-gradient(90deg, rgba(99, 102, 241, 0.05) 1.5px, transparent 1.5px)
-            `,
-            backgroundSize: '40px 40px',
-            borderRadius: '16px',
-            overflow: 'hidden',
-            border: '1.5px solid rgba(99, 102, 241, 0.15)',
-            boxShadow: '0 20px 50px rgba(0,0,0,0.7), inset 0 0 40px rgba(99, 102, 241, 0.05)',
-            cursor: 'none',
-            userSelect: 'none',
-            WebkitUserSelect: 'none',
-            msUserSelect: 'none',
-            MozUserSelect: 'none'
-          }}
-        >
-        {walls.map((wall, i) => (
+      <div className="bf-body">
+        {/* ── Arena ─────────────────────────────────────── */}
+        <div ref={arenaViewportRef} className="bf-viewport">
           <div
-            key={i}
-            style={{
-              position: 'absolute',
-              left: `${(wall.x / arenaSize.w) * 100}%`,
-              top: `${(wall.y / arenaSize.h) * 100}%`,
-              width: `${(wall.width / arenaSize.w) * 100}%`,
-              height: `${(wall.height / arenaSize.h) * 100}%`,
-              background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-              border: '1.5px solid rgba(99, 102, 241, 0.3)',
-              borderRadius: '6px',
-              boxShadow: '0 4px 15px rgba(0, 0, 0, 0.5), inset 0 0 8px rgba(99, 102, 241, 0.1)',
-              pointerEvents: 'none'
-            }}
-          />
-        ))}
+            ref={arenaRef}
+            className={`bf-arena ${isCritical ? 'is-critical' : ''} ${isDown ? 'is-down' : ''}`}
+            onMouseMove={handleMouseMove}
+            onMouseDown={(e) => { e.preventDefault(); startFiring(); }}
+            onMouseUp={stopFiring}
+            onMouseLeave={stopFiring}
+            onDoubleClick={(e) => { e.preventDefault(); fireOnce(); }}
+            style={{ width: `${arenaDisplaySize.w}px`, height: `${arenaDisplaySize.h}px` }}
+          >
+            <span className="bf-corner bf-c-tl" />
+            <span className="bf-corner bf-c-tr" />
+            <span className="bf-corner bf-c-bl" />
+            <span className="bf-corner bf-c-br" />
 
-        <svg style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', pointerEvents: 'none' }} viewBox={`0 0 ${arenaSize.w} ${arenaSize.h}`}>
-          <defs>
-            <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="3" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
-          </defs>
-          {me && me.hp > 0 && (
-            <g>
-              <line
-                x1={me.x}
-                y1={me.y}
-                x2={me.x + Math.cos(aimAngle) * 2000}
-                y2={me.y + Math.sin(aimAngle) * 2000}
-                stroke="#f97316"
-                strokeWidth="3.5"
-                opacity="0.3"
-                strokeDasharray="6 8"
-                filter="url(#glow)"
-              />
-              <line
-                x1={me.x}
-                y1={me.y}
-                x2={me.x + Math.cos(aimAngle) * 2000}
-                y2={me.y + Math.sin(aimAngle) * 2000}
-                stroke="#f97316"
-                strokeWidth="1.2"
-                opacity="0.75"
-                strokeDasharray="6 8"
-              />
-            </g>
-          )}
-          {tracers.map((t) => {
-            const dx = t.x2 - t.x1;
-            const dy = t.y2 - t.y1;
-            const angle = Math.atan2(dy, dx);
-            const bulletLength = 35;
-            return (
-              <g
-                key={t.id}
+            {walls.map((wall, i) => (
+              <div
+                key={i}
+                className="bf-wall"
                 style={{
-                  '--dx': `${dx}px`,
-                  '--dy': `${dy}px`,
-                  animation: 'bullet-fly 0.12s linear forwards'
+                  left: `${(wall.x / arenaSize.w) * 100}%`,
+                  top: `${(wall.y / arenaSize.h) * 100}%`,
+                  width: `${(wall.width / arenaSize.w) * 100}%`,
+                  height: `${(wall.height / arenaSize.h) * 100}%`,
+                  '--i': i,
                 }}
-              >
-                <line
-                  x1={t.x1}
-                  y1={t.y1}
-                  x2={t.x1 + Math.cos(angle) * bulletLength}
-                  y2={t.y1 + Math.sin(angle) * bulletLength}
-                  stroke="#f97316"
-                  strokeWidth="4.5"
-                  opacity="0.8"
-                  filter="url(#glow)"
-                />
-                <line
-                  x1={t.x1}
-                  y1={t.y1}
-                  x2={t.x1 + Math.cos(angle) * bulletLength}
-                  y2={t.y1 + Math.sin(angle) * bulletLength}
-                  stroke="#fff"
-                  strokeWidth="1.8"
-                  opacity="1"
-                />
-              </g>
-            );
-          })}
-        </svg>
+              />
+            ))}
 
-        {players.map((p) => {
-          const isMe = p.userId === myUserId;
-          const isTargeted = p.userId === lockedPlayerId;
+            <svg className="bf-fx" viewBox={`0 0 ${arenaSize.w} ${arenaSize.h}`}>
+              <defs>
+                <filter id="bf-glow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="3" result="blur" />
+                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
+                {me && (
+                  <linearGradient
+                    id="bf-aim-grad"
+                    gradientUnits="userSpaceOnUse"
+                    x1={me.x}
+                    y1={me.y}
+                    x2={me.x + Math.cos(aimAngle) * 700}
+                    y2={me.y + Math.sin(aimAngle) * 700}
+                  >
+                    <stop offset="0%" stopColor={lockedPlayerId ? '#f87171' : '#fbbf24'} stopOpacity="0.95" />
+                    <stop offset="100%" stopColor={lockedPlayerId ? '#f87171' : '#fbbf24'} stopOpacity="0" />
+                  </linearGradient>
+                )}
+              </defs>
 
-          return (
-            <div
-              key={p.userId}
-              style={{
-                position: 'absolute',
-                left: `${(p.x / arenaSize.w) * 100}%`,
-                top: `${(p.y / arenaSize.h) * 100}%`,
-                transform: 'translate(-50%, -50%)',
-                display: p.hp > 0 ? 'flex' : 'none',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '4px',
-                zIndex: isMe ? 10 : 5,
-                pointerEvents: 'none'
-              }}
-            >
-              {isTargeted && (
-                <div style={{
-                  position: 'absolute',
-                  width: '46px',
-                  height: '46px',
-                  borderRadius: '50%',
-                  border: '2px dashed #ef4444',
-                  animation: 'spin 4s linear infinite',
-                  top: 'calc(50% + 5px)',
-                  transform: 'translateY(-50%)',
-                  boxShadow: '0 0 12px rgba(239, 68, 68, 0.4)',
-                  pointerEvents: 'none'
-                }} />
+              {me && me.hp > 0 && (
+                <g className="bf-aim">
+                  <line
+                    x1={me.x}
+                    y1={me.y}
+                    x2={me.x + Math.cos(aimAngle) * 700}
+                    y2={me.y + Math.sin(aimAngle) * 700}
+                    stroke="url(#bf-aim-grad)"
+                    strokeWidth="6"
+                    opacity="0.25"
+                    filter="url(#bf-glow)"
+                  />
+                  <line
+                    className="bf-aim-dots"
+                    x1={me.x}
+                    y1={me.y}
+                    x2={me.x + Math.cos(aimAngle) * 700}
+                    y2={me.y + Math.sin(aimAngle) * 700}
+                    stroke="url(#bf-aim-grad)"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </g>
               )}
 
-              <span style={{
-                fontSize: '11px',
-                fontWeight: isMe ? '700' : '500',
-                color: isMe ? '#818cf8' : '#e2e8f0',
-                background: 'rgba(15, 23, 42, 0.8)',
-                backdropFilter: 'blur(4px)',
-                border: isMe ? '1px solid rgba(129, 140, 248, 0.3)' : '1px solid rgba(255,255,255,0.08)',
-                padding: '2px 8px',
-                borderRadius: '6px',
-                whiteSpace: 'nowrap',
-                boxShadow: '0 4px 8px rgba(0,0,0,0.3)'
-              }}>
-                {p.displayName}
-              </span>
+              {tracers.map((t) => {
+                const dx = t.x2 - t.x1;
+                const dy = t.y2 - t.y1;
+                const angle = Math.atan2(dy, dx);
+                const bulletLength = 42;
+                return (
+                  <g key={t.id}>
+                    <circle className="bf-muzzle" cx={t.x1} cy={t.y1} r="9" />
+                    <g style={{ '--dx': `${dx}px`, '--dy': `${dy}px`, animation: 'bullet-fly 0.12s linear forwards' }}>
+                      <line
+                        x1={t.x1}
+                        y1={t.y1}
+                        x2={t.x1 + Math.cos(angle) * bulletLength}
+                        y2={t.y1 + Math.sin(angle) * bulletLength}
+                        stroke="#fb923c"
+                        strokeWidth="6"
+                        strokeLinecap="round"
+                        opacity="0.75"
+                        filter="url(#bf-glow)"
+                      />
+                      <line
+                        x1={t.x1}
+                        y1={t.y1}
+                        x2={t.x1 + Math.cos(angle) * bulletLength}
+                        y2={t.y1 + Math.sin(angle) * bulletLength}
+                        stroke="#fff7ed"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                      />
+                    </g>
+                    <circle className="bf-impact" cx={t.x2} cy={t.y2} r="10" />
+                  </g>
+                );
+              })}
+            </svg>
 
-              <div style={{
-                width: '48px',
-                height: '6px',
-                background: 'rgba(0, 0, 0, 0.5)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '3px',
-                overflow: 'hidden',
-                boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.5)'
-              }}>
-                <div style={{
-                  width: `${p.hp}%`,
-                  height: '100%',
-                  background: p.hp > 40 ? 'linear-gradient(90deg, #10b981, #34d399)' : 'linear-gradient(90deg, #ef4444, #f87171)',
-                  boxShadow: `0 0 6px ${p.hp > 40 ? 'rgba(16,185,129,0.5)' : 'rgba(239,68,68,0.5)'}`,
-                  transition: 'width 0.15s ease'
-                }} />
-              </div>
+            {players.map((p) => {
+              const isMe = p.userId === myUserId;
+              const isTargeted = p.userId === lockedPlayerId;
+              const hp = Math.max(0, Math.min(100, p.hp));
+              return (
+                <div
+                  key={p.userId}
+                  className={`bf-player ${isMe ? 'is-me' : 'is-enemy'} ${isTargeted ? 'is-targeted' : ''} ${hp <= 40 ? 'is-low' : ''}`}
+                  style={{
+                    left: `${(p.x / arenaSize.w) * 100}%`,
+                    top: `${(p.y / arenaSize.h) * 100}%`,
+                    display: p.hp > 0 ? 'block' : 'none',
+                    zIndex: isMe ? 10 : 5,
+                  }}
+                >
+                  <div className="bf-label">
+                    <div className="bf-tag">{isMe ? 'You' : p.displayName}</div>
+                    <div className="bf-hpbar"><i style={{ width: `${hp}%` }} /></div>
+                  </div>
+                  <div className="bf-fighter">
+                    <ArenaFighter
+                      color={isMe ? '#fbbf24' : '#fb7185'}
+                      shade={isMe ? '#b45309' : '#be123c'}
+                      facingLeft={isMe ? Math.cos(aimAngle) < 0 : p.facing < 0}
+                      aimAngle={isMe ? aimAngle : null}
+                      moving={!!p.moving}
+                    />
+                    {isTargeted && <div className="bf-lock"><i /><i /><i /><i /></div>}
+                  </div>
+                </div>
+              );
+            })}
 
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                transform: isMe && facingLeft ? 'scaleX(-1)' : 'none',
-                position: 'relative'
-              }}>
-                {isMe && (
-                  <div style={{
-                    position: 'absolute',
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    background: 'rgba(99, 102, 241, 0.15)',
-                    boxShadow: '0 0 15px rgba(99, 102, 241, 0.5)',
-                    zIndex: -1,
-                    top: '-4px'
-                  }} />
-                )}
-
-                <div style={{
-                  width: '12px',
-                  height: '12px',
-                  borderRadius: '50%',
-                  background: '#ffdbac',
-                  border: '1.5px solid #111827',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                  marginBottom: '1px',
-                  zIndex: 2
-                }} />
-
-                <div style={{
-                  width: '18px',
-                  height: '16px',
-                  borderRadius: '4px',
-                  background: isMe ? 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)' : 'linear-gradient(135deg, #f97316 0%, #c2410c 100%)',
-                  border: `1.5px solid ${isMe ? '#1e3a8a' : '#7c2d12'}`,
-                  boxShadow: '0 3px 6px rgba(0,0,0,0.4)',
-                  zIndex: 1
-                }} />
-              </div>
+            {/* Kill feed overlay */}
+            <div className="bf-feed" aria-live="polite">
+              {killFeed.map((k) => {
+                const mine = k.killerId === myUserId;
+                const died = k.victimId === myUserId;
+                return (
+                  <div key={k.id} className={`bf-feed-item ${mine ? 'is-mine' : ''} ${died ? 'is-death' : ''}`}>
+                    <span className="bf-feed-killer">{mine ? 'You' : k.killer}</span>
+                    <IconTarget size={12} />
+                    <span className="bf-feed-victim">{died ? 'You' : k.victim}</span>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
 
-        <div
-          style={{
-            position: 'absolute',
-            left: `${cursorPercent.x}%`,
-            top: `${cursorPercent.y}%`,
-            transform: 'translate(-50%, -50%)',
-            pointerEvents: 'none',
-            width: '32px',
-            height: '32px',
-            transition: 'width 0.15s, height 0.15s'
-          }}
-        >
-          <div style={{
-            position: 'absolute',
-            left: '50%',
-            top: 0,
-            width: '2px',
-            height: '8px',
-            background: lockedPlayerId ? '#ef4444' : '#6366f1',
-            transform: 'translateX(-50%)',
-            boxShadow: `0 0 6px ${lockedPlayerId ? '#ef4444' : '#6366f1'}`
-          }} />
-          <div style={{
-            position: 'absolute',
-            left: '50%',
-            bottom: 0,
-            width: '2px',
-            height: '8px',
-            background: lockedPlayerId ? '#ef4444' : '#6366f1',
-            transform: 'translateX(-50%)',
-            boxShadow: `0 0 6px ${lockedPlayerId ? '#ef4444' : '#6366f1'}`
-          }} />
-          <div style={{
-            position: 'absolute',
-            top: '50%',
-            left: 0,
-            height: '2px',
-            width: '8px',
-            background: lockedPlayerId ? '#ef4444' : '#6366f1',
-            transform: 'translateY(-50%)',
-            boxShadow: `0 0 6px ${lockedPlayerId ? '#ef4444' : '#6366f1'}`
-          }} />
-          <div style={{
-            position: 'absolute',
-            top: '50%',
-            right: 0,
-            height: '2px',
-            width: '8px',
-            background: lockedPlayerId ? '#ef4444' : '#6366f1',
-            transform: 'translateY(-50%)',
-            boxShadow: `0 0 6px ${lockedPlayerId ? '#ef4444' : '#6366f1'}`
-          }} />
-          <div style={{
-            position: 'absolute',
-            left: '50%',
-            top: '50%',
-            width: '14px',
-            height: '14px',
-            borderRadius: '50%',
-            border: `1px solid ${lockedPlayerId ? 'rgba(239, 68, 68, 0.6)' : 'rgba(99, 102, 241, 0.4)'}`,
-            transform: 'translate(-50%, -50%)',
-            boxShadow: `inset 0 0 4px ${lockedPlayerId ? 'rgba(239, 68, 68, 0.2)' : 'rgba(99, 102, 241, 0.2)'}`
-          }} />
-          <div style={{
-            position: 'absolute',
-            left: '50%',
-            top: '50%',
-            width: '4px',
-            height: '4px',
-            borderRadius: '50%',
-            background: lockedPlayerId ? '#ef4444' : '#fff',
-            transform: 'translate(-50%, -50%)',
-            boxShadow: `0 0 4px ${lockedPlayerId ? '#ef4444' : '#6366f1'}`
-          }} />
-        </div>
-        </div>
-      </div>
+            {/* Crosshair */}
+            <div
+              className={`bf-crosshair ${lockedPlayerId ? 'is-locked' : ''}`}
+              style={{ left: `${cursorPercent.x}%`, top: `${cursorPercent.y}%` }}
+            >
+              <span className="bf-ch-ring" />
+              <span className="bf-ch-tick t" />
+              <span className="bf-ch-tick b" />
+              <span className="bf-ch-tick l" />
+              <span className="bf-ch-tick r" />
+              <span className="bf-ch-dot" />
+            </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', gap: '20px', flexShrink: 0 }}>
-        <p style={{ fontSize: '12px', color: '#64748b', lineHeight: '1.5', margin: 0 }}>
-          ⌨️ Use <strong style={{ color: '#94a3b8' }}>W, A, S, D</strong> or arrows to move.<br />
-          🖱️ Aim with mouse, hold <strong style={{ color: '#94a3b8' }}>Left Click</strong> or <strong style={{ color: '#94a3b8' }}>Spacebar</strong> to fire lasers.
-        </p>
-
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '6px',
-          alignItems: 'flex-end',
-          background: 'rgba(15, 23, 42, 0.45)',
-          backdropFilter: 'blur(8px)',
-          border: '1px solid rgba(255,255,255,0.04)',
-          padding: '8px 14px',
-          borderRadius: '12px',
-          minWidth: '200px',
-          maxWidth: '42%',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
-        }}>
-          <span style={{ fontSize: '10px', color: '#64748b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.06)', width: '100%', paddingBottom: '4px', textAlign: 'right' }}>
-            Combat Log
-          </span>
-          {killFeed.length === 0 ? (
-            <span style={{ fontSize: '11px', color: '#475569', fontStyle: 'italic' }}>System ready...</span>
-          ) : (
-            killFeed.map((k) => (
-              <div key={k.id} style={{ fontSize: '12px', color: '#f1f5f9', fontWeight: 500, letterSpacing: '0.2px' }}>
-                {k.text}
+            {/* Eliminated overlay with a 3 s respawn ring (matches the server's respawn delay) */}
+            {isDown && (
+              <div className="bf-down">
+                <div className="bf-down-ring">
+                  <svg viewBox="0 0 64 64" aria-hidden="true">
+                    <circle cx="32" cy="32" r="28" className="bf-down-track" />
+                    <circle cx="32" cy="32" r="28" className="bf-down-arc" />
+                  </svg>
+                  <IconTarget size={20} />
+                </div>
+                <div className="bf-down-title">Eliminated</div>
+                <div className="bf-down-sub">Respawning…</div>
               </div>
-            ))
-          )}
+            )}
+          </div>
         </div>
-      </div>
 
-      {me && me.hp <= 0 && (
-        <div style={{
-          position: 'fixed',
-          bottom: '24px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'rgba(239, 68, 68, 0.95)',
-          color: '#fff',
-          padding: '12px 24px',
-          borderRadius: '12px',
-          fontSize: '14px',
-          fontWeight: 700,
-          boxShadow: '0 8px 30px rgba(239, 68, 68, 0.4)',
-          backdropFilter: 'blur(8px)',
-          animation: 'pulse 1.5s infinite',
-          zIndex: 100
-        }}>
-          ⚠️ ELIMINATED — RESPAWNING SHORTLY
-        </div>
-      )}
+        {/* ── Live standings ────────────────────────────── */}
+        <aside className="bf-side">
+          <div className="bf-side-title">Standings</div>
+          <div className="bf-standings">
+            {standings.map((p, i) => {
+              const isMe = p.userId === myUserId;
+              return (
+                <div key={p.userId} className={`bf-standing ${isMe ? 'is-me' : ''} ${p.hp <= 0 ? 'is-down' : ''}`}>
+                  <span className="bf-rank">{i + 1}</span>
+                  <span className="bf-standing-name">{isMe ? 'You' : p.displayName}</span>
+                  <span className="bf-standing-kills">{p.kills || 0}</span>
+                  <span className="bf-standing-hp"><i style={{ width: `${Math.max(0, Math.min(100, p.hp))}%` }} /></span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="bf-side-title" style={{ marginTop: 18 }}>Controls</div>
+          <div className="bf-keys">
+            <div><span className="bf-kbd-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span>Move</div>
+            <div><span className="bf-kbd-row"><kbd>Mouse</kbd></span>Aim</div>
+            <div><span className="bf-kbd-row"><kbd>Click</kbd><kbd>Space</kbd></span>Fire</div>
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
